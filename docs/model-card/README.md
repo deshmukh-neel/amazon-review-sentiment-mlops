@@ -4,11 +4,11 @@
 
 | Field | Value |
 | --- | --- |
-| Model version | `20260807T201536Z-9348d52` |
+| Model version | `20260807T211915Z-2a070c1` |
 | Dataset version | `mteb-amazon_polarity-326981253e1a-s42` |
-| Training Git SHA | `9348d523dacb6fda52c42772070cc074de20c2f8` |
-| Trained | 2026-08-07 20:15:36 UTC |
-| Artifact SHA-256 | `15b9f85c779833a2fe06dfac3bdbb033f376dc9f1f9f07073a8ac3eb3961039b` |
+| Training Git SHA | `2a070c192d37f991e2b6e014bb674cd73f6146e7` |
+| Trained | 2026-08-07 21:19:15 UTC |
+| Artifact SHA-256 | `dfdb1f3e1dc9371d21883de2c733e1c90eb942b5aeefaf69a440c9c67b3dc234` |
 | Artifact size | 990,318 bytes (about 968 KiB) |
 
 The estimator is one scikit-learn pipeline:

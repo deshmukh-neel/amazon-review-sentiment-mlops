@@ -112,7 +112,7 @@ Content-Type: application/json
 {
   "label": "positive",
   "positive_probability": 0.98,
-  "model_version": "20260807T201536Z-9348d52",
+  "model_version": "20260807T211915Z-2a070c1",
   "request_id": "3bdb4135-2a53-4374-85ec-4034f2a2aa59"
 }
 ```

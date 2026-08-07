@@ -1,10 +1,10 @@
 {
-  "model_version": "20260807T201536Z-9348d52",
+  "model_version": "20260807T211915Z-2a070c1",
   "dataset_version": "mteb-amazon_polarity-326981253e1a-s42",
-  "git_sha": "9348d523dacb6fda52c42772070cc074de20c2f8",
-  "artifact_sha256": "15b9f85c779833a2fe06dfac3bdbb033f376dc9f1f9f07073a8ac3eb3961039b",
+  "git_sha": "2a070c192d37f991e2b6e014bb674cd73f6146e7",
+  "artifact_sha256": "dfdb1f3e1dc9371d21883de2c733e1c90eb942b5aeefaf69a440c9c67b3dc234",
   "artifact_size_bytes": 990318,
-  "trained_at": "2026-08-07T20:15:36.855247Z",
+  "trained_at": "2026-08-07T21:19:15.593318Z",
   "metrics": {
     "validation": {
       "accuracy": 0.9155,
@@ -15,7 +15,7 @@
       "confusion_matrix": [[4589, 411], [434, 4566]],
       "dummy_macro_f1": 0.3333333333333333,
       "macro_f1_improvement": 0.582166219659302,
-      "inference_latency_ms": 0.26876668
+      "inference_latency_ms": 0.27198832
     },
     "test": {
       "accuracy": 0.9153,
@@ -26,7 +26,7 @@
       "confusion_matrix": [[4582, 418], [429, 4571]],
       "dummy_macro_f1": 0.3333333333333333,
       "macro_f1_improvement": 0.5819665641795426,
-      "inference_latency_ms": 0.27044
+      "inference_latency_ms": 0.27792
     }
   },
   "measurement_note": "Model-only single-record latency on local Apple Silicon; excludes network and cold-start time."
