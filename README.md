@@ -75,9 +75,9 @@ uv run reviewsignal pipeline \
   --fixture tests/fixtures/tiny_reviews.jsonl \
   --data-dir /tmp/reviewsignal-data \
   --model-dir /tmp/reviewsignal-models \
-  --train-size 20 \
-  --validation-size 6 \
-  --test-size 6
+  --train-size 16 \
+  --validation-size 8 \
+  --test-size 8
 ```
 
 The command prints the candidate manifest path. Start the app with that manifest:
