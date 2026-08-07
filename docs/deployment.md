@@ -1,6 +1,6 @@
 # Deployment, promotion, and rollback
 
-The Terraform and GitHub workflows are ready, but no cloud resources are created by a validation or plan. Enabling billing and applying Terraform are explicit operator actions.
+The production stack is live in GCP project `mlops-491820` at [reviewsignal-6amzjx52nq-uc.a.run.app](https://reviewsignal-6amzjx52nq-uc.a.run.app/). It currently serves model `20260807T211915Z-2a070c1`. Terraform remains the source of truth; validation and planning are read-only, while applying infrastructure and approving protected deployments are explicit operator actions.
 
 ## 1. Bootstrap remote state
 
@@ -35,7 +35,7 @@ Terraform provisions the private buckets, Artifact Registry, service/job, Schedu
 
 ## 3. Configure GitHub
 
-Create a protected `production` environment and set repository/environment variables from Terraform outputs:
+Create a protected `production` environment for manual approval and set these repository variables from Terraform outputs:
 
 - `GCP_PROJECT_ID`
 - `GCP_REGION`
@@ -47,6 +47,7 @@ Create a protected `production` environment and set repository/environment varia
 - `CLOUD_RUN_SERVICE`
 - `GCP_RUNTIME_SERVICE_ACCOUNT`
 - `PRODUCTION_MODEL_MANIFEST_URI`
+- `TF_STATE_BUCKET`
 
 Pull requests run lint, tests/coverage, synthetic training, a production-container smoke test, and Terraform validation. Same-repository pull requests can also receive a read-only Terraform plan through OIDC. Forked pull requests never receive cloud credentials.
 

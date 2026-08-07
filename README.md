@@ -9,7 +9,7 @@
 
 ReviewSignal turns an MSDS group project into a production-shaped ML/MLOps portfolio project. It resolves a pinned source revision, creates deterministic balanced splits, trains and evaluates a classical NLP model, verifies model checksums at load time, and separates monthly candidate creation from explicit production promotion.
 
-> **Deployment status:** the application and GCP infrastructure are release-ready. The public Cloud Run URL will be added after billing is explicitly enabled for the target project; no cloud resources have been created yet.
+> **Live on GCP:** [try the ReviewSignal demo](https://reviewsignal-6amzjx52nq-uc.a.run.app/) or [explore the OpenAPI docs](https://reviewsignal-6amzjx52nq-uc.a.run.app/docs). The scale-to-zero Cloud Run service currently serves model `20260807T211915Z-2a070c1` from project `mlops-491820`.
 
 ## Measured result
 
