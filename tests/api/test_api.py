@@ -91,6 +91,7 @@ def test_submitted_review_text_never_appears_in_logs(caplog) -> None:
 
 def test_health_readiness_metadata_docs_and_page(client: TestClient) -> None:
     assert client.get("/healthz").json() == {"status": "ok"}
+    assert client.get("/health").json() == {"status": "ok"}
     assert client.get("/readyz").json() == {
         "status": "ready",
         "model_version": "20260807T123456Z-abcdef1",

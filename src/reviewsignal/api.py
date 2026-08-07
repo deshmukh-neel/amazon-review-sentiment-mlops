@@ -122,6 +122,7 @@ def create_app(runtime: RuntimeProtocol | None = None) -> FastAPI:
     async def model_metadata() -> dict[str, object]:
         return selected_runtime.metadata()
 
+    @application.get("/health")
     @application.get("/healthz")
     async def health() -> dict[str, str]:
         return {"status": "ok"}

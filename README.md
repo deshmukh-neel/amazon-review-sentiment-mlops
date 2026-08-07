@@ -117,7 +117,7 @@ Content-Type: application/json
 }
 ```
 
-The service also exposes `GET /api/v1/model`, `GET /healthz`, `GET /readyz`, and `GET /docs`. Prediction input must contain 1–5,000 nonblank characters.
+The service also exposes `GET /api/v1/model`, `GET /health`, `GET /healthz`, `GET /readyz`, and `GET /docs`. [Cloud Run reserves some paths ending in `z`](https://docs.cloud.google.com/run/docs/known-issues#reserved_url_paths), so cloud liveness probes use `/health`; `/healthz` remains available when the container is run directly. Prediction input must contain 1–5,000 nonblank characters.
 
 ## Repository map
 

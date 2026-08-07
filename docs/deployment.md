@@ -88,7 +88,7 @@ Because buckets are versioned, restore the prior production manifest generation 
 
 ## Post-deployment acceptance
 
-- Public page, `/docs`, `/healthz`, `/readyz`, and `/api/v1/model` respond successfully.
+- Public page, `/docs`, `/health`, `/readyz`, and `/api/v1/model` respond successfully. The container also exposes `/healthz`, but [Cloud Run reserves some public paths ending in `z`](https://docs.cloud.google.com/run/docs/known-issues#reserved_url_paths).
 - Positive and negative prediction probes return valid contracts and request IDs.
 - The model version matches the promoted manifest.
 - A deliberately bad candidate fails before the production pointer or traffic changes.
