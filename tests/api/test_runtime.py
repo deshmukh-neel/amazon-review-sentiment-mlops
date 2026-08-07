@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
+from google.api_core.exceptions import NotFound
 
 from reviewsignal.ingestion import load_jsonl_fixture, materialize_dataset
 from reviewsignal.manifests import ModelManifest, read_manifest, write_manifest
@@ -75,3 +76,13 @@ def test_runtime_loads_manifest_and_artifact_from_gcs(tmp_path, fixture_path, fa
 
     assert runtime.ready is True
     assert runtime.model_version == manifest.model_version
+
+
+def test_runtime_wraps_missing_remote_manifest(monkeypatch) -> None:
+    def raise_not_found(*args, **kwargs) -> None:
+        raise NotFound("missing production model manifest")
+
+    monkeypatch.setattr("reviewsignal.runtime.download_uri", raise_not_found)
+
+    with pytest.raises(RuntimeLoadError, match="load failure"):
+        ModelRuntime.from_manifest("gs://private-models/production/model-manifest.json")

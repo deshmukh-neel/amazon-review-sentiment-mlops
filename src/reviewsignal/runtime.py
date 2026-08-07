@@ -5,6 +5,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from google.api_core.exceptions import GoogleAPICallError
+
 from reviewsignal.manifests import ModelManifest, read_manifest
 from reviewsignal.storage import StorageUriError, download_uri
 from reviewsignal.training import ArtifactChecksumError, load_verified_artifact
@@ -44,7 +46,14 @@ class ModelRuntime:
                     client=storage_client,
                 )
                 model = load_verified_artifact(artifact_path, manifest.artifact_sha256)
-        except (ArtifactChecksumError, KeyError, OSError, StorageUriError, ValueError) as error:
+        except (
+            ArtifactChecksumError,
+            GoogleAPICallError,
+            KeyError,
+            OSError,
+            StorageUriError,
+            ValueError,
+        ) as error:
             raise RuntimeLoadError(f"model artifact checksum or load failure: {error}") from error
         return cls(model, manifest)
 
