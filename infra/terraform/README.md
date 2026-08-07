@@ -15,7 +15,7 @@ terraform init -backend-config='bucket=YOUR_PROJECT_ID-reviewsignal-tfstate' -mi
 ## Validate and plan
 
 ```bash
-cp example.auto.tfvars local.auto.tfvars
+cp terraform.tfvars.example local.auto.tfvars
 terraform fmt -check -recursive
 terraform init -backend=false
 terraform validate

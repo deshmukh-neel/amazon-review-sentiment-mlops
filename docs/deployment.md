@@ -22,7 +22,7 @@ terraform -chdir=infra/terraform init \
 
 ## 2. Plan and apply infrastructure
 
-Copy `infra/terraform/example.auto.tfvars` to a local, ignored `.auto.tfvars` file and set the project, immutable image, Git SHA, exact GitHub owner/repository, production manifest URI, and optional billing/notification values.
+Copy `infra/terraform/terraform.tfvars.example` to a local, ignored `.auto.tfvars` file and set the project, immutable image, Git SHA, exact GitHub owner/repository, production manifest URI, and optional billing/notification values. The checked-in example deliberately does not use an `.auto.tfvars` suffix, so Terraform cannot load placeholder values by accident.
 
 ```bash
 terraform -chdir=infra/terraform fmt -check -recursive
