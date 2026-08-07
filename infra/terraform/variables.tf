@@ -64,7 +64,7 @@ variable "billing_account_id" {
 variable "monthly_budget_usd" {
   description = "Portfolio cost guardrail in US dollars."
   type        = number
-  default     = 5
+  default     = 46
 }
 
 variable "notification_channel_names" {

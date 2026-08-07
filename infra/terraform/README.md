@@ -1,6 +1,6 @@
 # GCP infrastructure
 
-Terraform manages private versioned data/model buckets, Artifact Registry, a scale-to-zero Cloud Run service, a monthly candidate-only Cloud Run Job and Scheduler trigger, least-privilege identities, repository-scoped GitHub OIDC, monitoring, and a `$5` monthly budget.
+Terraform manages private versioned data/model buckets, Artifact Registry, a scale-to-zero Cloud Run service, a monthly candidate-only Cloud Run Job and Scheduler trigger, least-privilege identities, repository-scoped GitHub OIDC, monitoring, and a `$46` monthly budget alert.
 
 ## State bootstrap
 

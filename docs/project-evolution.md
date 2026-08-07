@@ -39,7 +39,7 @@ These screenshots document a historical prototype; they are not evidence that Co
 | Lineage | Notebook and cloud state | Data/model manifests, Git SHA, immutable versions, SHA-256 |
 | Serving | None | FastAPI, responsive demo, OpenAPI, health/readiness |
 | Delivery | Manual cloud setup | Terraform, GitHub OIDC, CI, no-traffic promotion, rollback |
-| Operations | Composer monitoring | Cloud Run job/service alerts and a $5 budget guardrail |
+| Operations | Composer monitoring | Cloud Run job/service alerts and a $46 billing alert |
 | Privacy | Research workflow | No submitted demo text persisted or logged |
 
 ## Why Composer is historical

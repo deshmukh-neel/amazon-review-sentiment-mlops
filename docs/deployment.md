@@ -93,4 +93,4 @@ Because buckets are versioned, restore the prior production manifest generation 
 - The model version matches the promoted manifest.
 - A deliberately bad candidate fails before the production pointer or traffic changes.
 - Failed scheduled jobs, sustained 5xx rates, and abnormal latency trigger the configured alerts.
-- Billing reports and the $5 budget notification are visible.
+- Billing reports and the $46 budget notification are visible.

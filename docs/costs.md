@@ -21,13 +21,13 @@ ReviewSignal targets **less than $5/month** for normal portfolio traffic in `us-
 | Artifact Registry | $0.00–$0.50 | 0.5 GiB free allowance; keep-five/untagged cleanup |
 | Cloud Scheduler | $0.00–$0.10 | One job; first three jobs/account are currently free |
 | Logging/Monitoring/network | $0.00–$0.90 | Privacy-safe compact logs, low traffic, regional resources |
-| **Expected total** | **$0.00–$5.00** | Terraform budget threshold: $5 |
+| **Expected total** | **$0.00–$5.00** | Terraform budget alert: $46 |
 
 Current Google Cloud pricing pages document Cloud Run pay-per-use/free-tier behavior, 5 GB-months of eligible regional Standard Cloud Storage, 0.5 GiB of Artifact Registry storage, and three Scheduler jobs per billing account before charges. See the official [Cloud Run](https://cloud.google.com/run/pricing), [Cloud Storage](https://cloud.google.com/storage/pricing), [Artifact Registry](https://cloud.google.com/artifact-registry/pricing), and [Cloud Scheduler](https://cloud.google.com/scheduler/pricing) pricing pages.
 
 ## Guardrails
 
-- A Terraform-managed $5 budget can notify configured channels; a budget alerts but does not automatically cap spend.
+- A Terraform-managed $46 budget can notify configured channels; this is a broad safety alert, not the expected monthly spend or an automatic cap.
 - Buckets are private and versioned. Candidate objects expire after 90 days and versioned data after 365 days.
 - Artifact Registry deletes untagged images after 30 days and any images after 90 days while preserving at least five recent versions.
 - The service has zero minimum instances and no GPU.
