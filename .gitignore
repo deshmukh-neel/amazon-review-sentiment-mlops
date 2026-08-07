@@ -24,6 +24,8 @@ models/
 *.json.gz
 *.csv
 !tests/fixtures/*.jsonl
+!tests/data/
+!tests/data/**
 
 # Notebooks
 .ipynb_checkpoints/
