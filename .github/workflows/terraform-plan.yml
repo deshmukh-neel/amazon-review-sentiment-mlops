@@ -25,8 +25,8 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@v4
 
       - id: auth
         uses: google-github-actions/auth@v3
@@ -52,7 +52,7 @@ jobs:
           if [ "$code" -eq 1 ]; then exit 1; fi
           terraform -chdir=infra/terraform show -no-color reviewsignal.tfplan > infra/terraform/terraform-plan.txt
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: terraform-plan-${{ github.event.pull_request.number }}
           path: infra/terraform/terraform-plan.txt
