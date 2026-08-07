@@ -1,0 +1,133 @@
+name: Promote model
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_manifest_uri:
+        description: Immutable gs:// candidate model manifest URI
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: promote-production-model
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.21"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: uv sync --frozen
+
+      - id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v3
+
+      - name: Verify checksum and promotion metrics
+        env:
+          CANDIDATE_MANIFEST_URI: ${{ inputs.candidate_manifest_uri }}
+          PRODUCTION_MANIFEST_URI: ${{ vars.PRODUCTION_MODEL_MANIFEST_URI }}
+        run: |
+          mkdir -p /tmp/reviewsignal-candidate
+          gcloud storage cp "${CANDIDATE_MANIFEST_URI}" /tmp/reviewsignal-candidate/model-manifest.json
+          CANDIDATE_ARTIFACT_URI="$(jq -r '.artifact_uri' /tmp/reviewsignal-candidate/model-manifest.json)"
+          gcloud storage cp "${CANDIDATE_ARTIFACT_URI}" /tmp/reviewsignal-candidate/model.joblib
+          jq '.artifact_uri = "/tmp/reviewsignal-candidate/model.joblib"' \
+            /tmp/reviewsignal-candidate/model-manifest.json \
+            > /tmp/reviewsignal-candidate/local-manifest.json
+          if gcloud storage cp "${PRODUCTION_MANIFEST_URI}" /tmp/production-model-manifest.json; then
+            PRODUCTION_MACRO_F1="$(jq -r '.metrics.validation.macro_f1' /tmp/production-model-manifest.json)"
+            uv run reviewsignal evaluate \
+              --model-manifest /tmp/reviewsignal-candidate/local-manifest.json \
+              --production-macro-f1 "${PRODUCTION_MACRO_F1}"
+          else
+            uv run reviewsignal evaluate \
+              --model-manifest /tmp/reviewsignal-candidate/local-manifest.json
+          fi
+
+      - name: Deploy candidate with zero traffic, smoke test, and promote
+        env:
+          CANDIDATE_MANIFEST_URI: ${{ inputs.candidate_manifest_uri }}
+        run: |
+          SERVICE="${{ vars.CLOUD_RUN_SERVICE }}"
+          PROJECT="${{ vars.GCP_PROJECT_ID }}"
+          REGION="${{ vars.GCP_REGION }}"
+          PREVIOUS_REVISION="$(gcloud run revisions list \
+            --service "${SERVICE}" --project "${PROJECT}" --region "${REGION}" \
+            --sort-by='~metadata.creationTimestamp' --limit=1 \
+            --format='value(metadata.name)')"
+          IMAGE="$(gcloud run services describe "${SERVICE}" \
+            --project "${PROJECT}" --region "${REGION}" \
+            --format='value(spec.template.spec.containers[0].image)')"
+          SUFFIX="candidate-${GITHUB_RUN_ID}"
+          CANDIDATE_REVISION="${SERVICE}-${SUFFIX}"
+          TRAFFIC_SHIFTED=false
+          rollback() {
+            if [ "${TRAFFIC_SHIFTED}" = true ]; then
+              gcloud run services update-traffic "${SERVICE}" \
+                --project "${PROJECT}" --region "${REGION}" \
+                --to-revisions "${PREVIOUS_REVISION}=100" --quiet
+            fi
+          }
+          trap rollback ERR
+
+          gcloud run deploy "${SERVICE}" \
+            --project "${PROJECT}" --region "${REGION}" \
+            --image "${IMAGE}" \
+            --revision-suffix "${SUFFIX}" \
+            --set-env-vars "MODEL_MANIFEST_URI=${CANDIDATE_MANIFEST_URI}" \
+            --no-traffic --quiet
+          gcloud run services update-traffic "${SERVICE}" \
+            --project "${PROJECT}" --region "${REGION}" \
+            --set-tags "candidate=${CANDIDATE_REVISION}" --quiet
+          CANDIDATE_URL="$(gcloud run services describe "${SERVICE}" \
+            --project "${PROJECT}" --region "${REGION}" \
+            --format="value(status.traffic.filter(tag:candidate).url)")"
+          curl --fail --silent "${CANDIDATE_URL}/readyz" >/dev/null
+          curl --fail --silent "${CANDIDATE_URL}/openapi.json" >/dev/null
+          curl --fail --silent \
+            --header 'Content-Type: application/json' \
+            --data '{"text":"excellent product and reliable quality"}' \
+            "${CANDIDATE_URL}/api/v1/predict" >/dev/null
+          curl --fail --silent \
+            --header 'Content-Type: application/json' \
+            --data '{"text":"broken product and terrible support"}' \
+            "${CANDIDATE_URL}/api/v1/predict" >/dev/null
+
+          CANDIDATE_ARTIFACT_URI="$(jq -r '.artifact_uri' /tmp/reviewsignal-candidate/model-manifest.json)"
+          PRODUCTION_PREFIX="${{ vars.PRODUCTION_MODEL_MANIFEST_URI }}"
+          PRODUCTION_PREFIX="${PRODUCTION_PREFIX%/model-manifest.json}"
+          gcloud storage cp "${CANDIDATE_ARTIFACT_URI}" "${PRODUCTION_PREFIX}/model.joblib"
+          jq --arg uri "${PRODUCTION_PREFIX}/model.joblib" '.artifact_uri = $uri' \
+            /tmp/reviewsignal-candidate/model-manifest.json \
+            > /tmp/reviewsignal-candidate/production-manifest.json
+          gcloud storage cp /tmp/reviewsignal-candidate/production-manifest.json \
+            "${PRODUCTION_PREFIX}/model-manifest.json"
+
+          gcloud run services update-traffic "${SERVICE}" \
+            --project "${PROJECT}" --region "${REGION}" \
+            --to-revisions "${CANDIDATE_REVISION}=100" --quiet
+          TRAFFIC_SHIFTED=true
+          SERVICE_URL="$(gcloud run services describe "${SERVICE}" \
+            --project "${PROJECT}" --region "${REGION}" \
+            --format='value(status.url)')"
+          curl --fail --silent "${SERVICE_URL}/readyz" >/dev/null
+          trap - ERR

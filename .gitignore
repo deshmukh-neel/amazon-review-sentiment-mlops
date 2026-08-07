@@ -32,12 +32,16 @@ models/
 
 # Terraform
 infra/terraform/.terraform/
+infra/terraform/**/.terraform/
 infra/terraform/*.tfstate
 infra/terraform/*.tfstate.*
+infra/terraform/**/*.tfstate
+infra/terraform/**/*.tfstate.*
 infra/terraform/*.tfplan
-infra/terraform/.terraform.lock.hcl
+infra/terraform/**/*.tfplan
 infra/terraform/backend.hcl
 infra/terraform/*.auto.tfvars
+infra/terraform/**/*.auto.tfvars
 !infra/terraform/example.auto.tfvars
 
 # Local worktrees and QA output

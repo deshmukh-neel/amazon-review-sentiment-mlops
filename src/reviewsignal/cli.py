@@ -34,6 +34,7 @@ def _current_git_sha() -> str:
 @app.command()
 def ingest(
     output_dir: Annotated[Path, typer.Option()] = Path("data/processed"),
+    publish_prefix: Annotated[str | None, typer.Option()] = None,
     fixture: Annotated[Path | None, typer.Option(exists=True, dir_okay=False)] = None,
     train_size: Annotated[int, typer.Option()] = 80_000,
     validation_size: Annotated[int, typer.Option()] = 10_000,
@@ -45,6 +46,7 @@ def ingest(
         manifest_path = materialize_fixture(
             fixture,
             output_dir,
+            publish_prefix=publish_prefix,
             train_size=train_size,
             validation_size=validation_size,
             test_size=test_size,
@@ -57,6 +59,7 @@ def ingest(
             source_train,
             source_test,
             output_dir=output_dir,
+            publish_prefix=publish_prefix,
             source=DATASET_ID,
             source_revision=revision,
             source_checksums=checksums,
@@ -74,12 +77,14 @@ def train(
         "data/processed/data-manifest.json"
     ),
     output_dir: Annotated[Path, typer.Option()] = Path("artifacts/candidates"),
+    publish_prefix: Annotated[str | None, typer.Option()] = None,
     git_sha: Annotated[str | None, typer.Option()] = None,
 ) -> None:
     """Train an immutable candidate and record its lineage and metrics."""
     manifest_path = train_candidate(
         data_manifest,
         output_dir=output_dir,
+        publish_prefix=publish_prefix,
         git_sha=git_sha or _current_git_sha(),
     )
     typer.echo(f"Candidate created: {manifest_path}")
@@ -109,6 +114,8 @@ def pipeline(
     fixture: Annotated[Path | None, typer.Option(exists=True, dir_okay=False)] = None,
     data_dir: Annotated[Path, typer.Option()] = Path("data/processed"),
     model_dir: Annotated[Path, typer.Option()] = Path("artifacts/candidates"),
+    data_publish_prefix: Annotated[str | None, typer.Option()] = None,
+    model_publish_prefix: Annotated[str | None, typer.Option()] = None,
     train_size: Annotated[int, typer.Option()] = 80_000,
     validation_size: Annotated[int, typer.Option()] = 10_000,
     test_size: Annotated[int, typer.Option()] = 10_000,
@@ -120,6 +127,7 @@ def pipeline(
         data_manifest_path = materialize_fixture(
             fixture,
             data_dir,
+            publish_prefix=data_publish_prefix,
             train_size=train_size,
             validation_size=validation_size,
             test_size=test_size,
@@ -132,6 +140,7 @@ def pipeline(
             source_train,
             source_test,
             output_dir=data_dir,
+            publish_prefix=data_publish_prefix,
             source=DATASET_ID,
             source_revision=revision,
             source_checksums=checksums,
@@ -143,6 +152,7 @@ def pipeline(
     model_manifest_path = train_candidate(
         data_manifest_path,
         output_dir=model_dir,
+        publish_prefix=model_publish_prefix,
         git_sha=git_sha or _current_git_sha(),
     )
     typer.echo(f"Candidate created: {model_manifest_path}")

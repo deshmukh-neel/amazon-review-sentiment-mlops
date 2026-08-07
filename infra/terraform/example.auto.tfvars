@@ -1,0 +1,6 @@
+project_id         = "your-gcp-project-id"
+container_image    = "us-central1-docker.pkg.dev/your-gcp-project-id/reviewsignal/app:0123456789abcdef"
+deployment_git_sha = "0123456789abcdef0123456789abcdef01234567"
+billing_account_id = "000000-000000-000000"
+github_owner       = "your-github-owner"
+github_repository  = "amazon-review-sentiment-mlops"

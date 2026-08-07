@@ -12,6 +12,7 @@ from huggingface_hub import HfApi
 
 from reviewsignal.data import create_balanced_splits, sha256_file
 from reviewsignal.manifests import DataManifest, write_manifest
+from reviewsignal.storage import upload_file
 
 DATASET_ID = "mteb/amazon_polarity"
 PINNED_REVISION = "ec149c1"
@@ -78,6 +79,8 @@ def materialize_dataset(
     source_test: pd.DataFrame,
     *,
     output_dir: Path,
+    publish_prefix: str | None = None,
+    storage_client: Any | None = None,
     source: str,
     source_revision: str,
     source_checksums: dict[str, str],
@@ -102,10 +105,16 @@ def materialize_dataset(
     )
     output_dir.mkdir(parents=True, exist_ok=True)
     split_uris: dict[str, str] = {}
+    normalized_publish_prefix = publish_prefix.rstrip("/") if publish_prefix else None
     for name, frame in splits.items():
         destination = output_dir / f"{name}.parquet"
         frame.to_parquet(destination, index=False)
-        split_uris[name] = str(destination.resolve())
+        if normalized_publish_prefix:
+            remote_uri = f"{normalized_publish_prefix}/{name}.parquet"
+            upload_file(destination, remote_uri, client=storage_client)
+            split_uris[name] = remote_uri
+        else:
+            split_uris[name] = str(destination.resolve())
 
     manifest = DataManifest(
         dataset_version=_dataset_version(source, source_revision, seed, sizes),
@@ -126,6 +135,12 @@ def materialize_dataset(
     )
     manifest_path = output_dir / "data-manifest.json"
     write_manifest(manifest, manifest_path)
+    if normalized_publish_prefix:
+        upload_file(
+            manifest_path,
+            f"{normalized_publish_prefix}/data-manifest.json",
+            client=storage_client,
+        )
     return manifest_path
 
 
@@ -133,6 +148,8 @@ def materialize_fixture(
     fixture_path: Path,
     output_dir: Path,
     *,
+    publish_prefix: str | None = None,
+    storage_client: Any | None = None,
     train_size: int,
     validation_size: int,
     test_size: int,
@@ -143,6 +160,8 @@ def materialize_fixture(
         source_train,
         source_test,
         output_dir=output_dir,
+        publish_prefix=publish_prefix,
+        storage_client=storage_client,
         source="synthetic-fixture",
         source_revision="fixture-v1",
         source_checksums={fixture_path.name: sha256_file(fixture_path)},

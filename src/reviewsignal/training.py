@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import importlib.metadata
 import sys
+import tempfile
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -25,6 +26,7 @@ from sklearn.metrics import (
 from sklearn.pipeline import Pipeline
 
 from reviewsignal.manifests import DataManifest, ModelManifest, read_manifest, write_manifest
+from reviewsignal.storage import download_uri, upload_file
 
 
 class ArtifactChecksumError(RuntimeError):
@@ -145,12 +147,25 @@ def train_candidate(
     data_manifest_path: Path,
     *,
     output_dir: Path,
+    publish_prefix: str | None = None,
+    storage_client: Any | None = None,
     git_sha: str,
     trained_at: datetime | None = None,
     latency_repetitions: int = 25,
 ) -> Path:
     data_manifest = read_manifest(data_manifest_path, DataManifest)
-    splits = {name: pd.read_parquet(uri) for name, uri in data_manifest.split_uris.items()}
+    with tempfile.TemporaryDirectory(prefix="reviewsignal-data-") as temp_dir:
+        staging_dir = Path(temp_dir)
+        splits = {
+            name: pd.read_parquet(
+                download_uri(
+                    uri,
+                    staging_dir / f"{name}.parquet",
+                    client=storage_client,
+                )
+            )
+            for name, uri in data_manifest.split_uris.items()
+        }
     model = build_pipeline()
     model.fit(splits["train"]["text"], splits["train"]["label"])
     metrics = {
@@ -169,12 +184,20 @@ def train_candidate(
     artifact_path = version_dir / "model.joblib"
     artifact_sha256 = save_artifact(model, artifact_path)
     metrics["artifact_size_bytes"] = artifact_path.stat().st_size
+    normalized_publish_prefix = publish_prefix.rstrip("/") if publish_prefix else None
+    if normalized_publish_prefix:
+        version_publish_prefix = f"{normalized_publish_prefix}/{model_version}"
+        artifact_uri = f"{version_publish_prefix}/model.joblib"
+        upload_file(artifact_path, artifact_uri, client=storage_client)
+    else:
+        version_publish_prefix = None
+        artifact_uri = str(artifact_path.resolve())
 
     manifest = ModelManifest(
         model_version=model_version,
         dataset_version=data_manifest.dataset_version,
         git_sha=git_sha,
-        artifact_uri=str(artifact_path.resolve()),
+        artifact_uri=artifact_uri,
         artifact_sha256=artifact_sha256,
         library_versions={
             distribution: importlib.metadata.version(distribution)
@@ -199,4 +222,10 @@ def train_candidate(
     )
     manifest_path = version_dir / "model-manifest.json"
     write_manifest(manifest, manifest_path)
+    if version_publish_prefix:
+        upload_file(
+            manifest_path,
+            f"{version_publish_prefix}/model-manifest.json",
+            client=storage_client,
+        )
     return manifest_path

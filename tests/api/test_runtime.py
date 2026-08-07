@@ -5,7 +5,9 @@ from datetime import UTC, datetime
 import pytest
 
 from reviewsignal.ingestion import load_jsonl_fixture, materialize_dataset
+from reviewsignal.manifests import ModelManifest, read_manifest, write_manifest
 from reviewsignal.runtime import ModelRuntime, RuntimeLoadError
+from reviewsignal.storage import upload_file
 from reviewsignal.training import train_candidate
 
 
@@ -56,3 +58,20 @@ def test_runtime_refuses_a_corrupt_artifact(tmp_path, fixture_path) -> None:
 
     with pytest.raises(RuntimeLoadError, match="checksum"):
         ModelRuntime.from_manifest(manifest_path)
+
+
+def test_runtime_loads_manifest_and_artifact_from_gcs(tmp_path, fixture_path, fake_storage) -> None:
+    manifest_path = _candidate_manifest(tmp_path, fixture_path)
+    manifest = read_manifest(manifest_path, ModelManifest)
+    artifact_path = manifest_path.parent / "model.joblib"
+    artifact_uri = "gs://private-models/candidates/v1/model.joblib"
+    manifest_uri = "gs://private-models/candidates/v1/model-manifest.json"
+    upload_file(artifact_path, artifact_uri, client=fake_storage)
+    remote_manifest = manifest.model_copy(update={"artifact_uri": artifact_uri})
+    write_manifest(remote_manifest, manifest_path)
+    upload_file(manifest_path, manifest_uri, client=fake_storage)
+
+    runtime = ModelRuntime.from_manifest(manifest_uri, storage_client=fake_storage)
+
+    assert runtime.ready is True
+    assert runtime.model_version == manifest.model_version

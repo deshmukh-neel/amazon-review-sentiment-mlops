@@ -52,3 +52,39 @@ def test_candidate_training_records_metrics_lineage_and_loadable_artifact(
     assert manifest.metrics["artifact_size_bytes"] == artifact_path.stat().st_size
     model = load_verified_artifact(artifact_path, manifest.artifact_sha256)
     assert model.predict_proba(["excellent reliable item"]).shape == (1, 2)
+
+
+def test_candidate_can_train_from_gcs_splits_and_publish_remote_artifacts(
+    tmp_path, fixture_path, fake_storage
+) -> None:
+    source_train, source_test = load_jsonl_fixture(fixture_path)
+    data_manifest_path = materialize_dataset(
+        source_train,
+        source_test,
+        output_dir=tmp_path / "data",
+        publish_prefix="gs://private-data/versions/fixture-v1",
+        storage_client=fake_storage,
+        source="synthetic-fixture",
+        source_revision="fixture-v1",
+        source_checksums={"tiny_reviews.jsonl": "f" * 64},
+        train_size=16,
+        validation_size=8,
+        test_size=8,
+        seed=42,
+    )
+
+    model_manifest_path = train_candidate(
+        data_manifest_path,
+        output_dir=tmp_path / "models",
+        publish_prefix="gs://private-models/candidates",
+        storage_client=fake_storage,
+        git_sha="abcdef123456",
+        trained_at=datetime(2026, 8, 7, 12, 34, 56, tzinfo=UTC),
+        latency_repetitions=2,
+    )
+
+    manifest = read_manifest(model_manifest_path, ModelManifest)
+    remote_prefix = f"private-models/candidates/{manifest.model_version}"
+    assert manifest.artifact_uri == f"gs://{remote_prefix}/model.joblib"
+    assert f"{remote_prefix}/model.joblib" in fake_storage.objects
+    assert f"{remote_prefix}/model-manifest.json" in fake_storage.objects

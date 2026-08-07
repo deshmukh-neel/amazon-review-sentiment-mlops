@@ -1,0 +1,73 @@
+name: Deploy main
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v3
+
+      - name: Configure Artifact Registry
+        run: gcloud auth configure-docker "${{ vars.GCP_REGION }}-docker.pkg.dev" --quiet
+
+      - name: Build and push immutable image
+        env:
+          IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_ARTIFACT_REPOSITORY }}/app:${{ github.sha }}
+        run: |
+          docker build --tag "${IMAGE}" .
+          docker push "${IMAGE}"
+
+      - name: Deploy with the current production model
+        env:
+          IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_ARTIFACT_REPOSITORY }}/app:${{ github.sha }}
+        run: |
+          gcloud run deploy "${{ vars.CLOUD_RUN_SERVICE }}" \
+            --project "${{ vars.GCP_PROJECT_ID }}" \
+            --region "${{ vars.GCP_REGION }}" \
+            --image "${IMAGE}" \
+            --service-account "${{ vars.GCP_RUNTIME_SERVICE_ACCOUNT }}" \
+            --set-env-vars "MODEL_MANIFEST_URI=${{ vars.PRODUCTION_MODEL_MANIFEST_URI }}" \
+            --min 0 \
+            --max 2 \
+            --quiet
+
+      - name: Post-deployment smoke test
+        run: |
+          SERVICE_URL="$(gcloud run services describe "${{ vars.CLOUD_RUN_SERVICE }}" \
+            --project "${{ vars.GCP_PROJECT_ID }}" \
+            --region "${{ vars.GCP_REGION }}" \
+            --format='value(status.url)')"
+          curl --fail --silent "${SERVICE_URL}/" >/dev/null
+          curl --fail --silent "${SERVICE_URL}/readyz" >/dev/null
+          curl --fail --silent "${SERVICE_URL}/api/v1/model" >/dev/null
+          curl --fail --silent \
+            --header 'Content-Type: application/json' \
+            --data '{"text":"excellent product and reliable quality"}' \
+            "${SERVICE_URL}/api/v1/predict" >/dev/null
+          curl --fail --silent \
+            --header 'Content-Type: application/json' \
+            --data '{"text":"broken product and terrible support"}' \
+            "${SERVICE_URL}/api/v1/predict" >/dev/null

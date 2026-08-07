@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
 from reviewsignal.manifests import ModelManifest, read_manifest
+from reviewsignal.storage import StorageUriError, download_uri
 from reviewsignal.training import ArtifactChecksumError, load_verified_artifact
 
 
@@ -21,21 +23,37 @@ class ModelRuntime:
         self.model_version = manifest.model_version
 
     @classmethod
-    def from_manifest(cls, manifest_path: Path) -> ModelRuntime:
+    def from_manifest(
+        cls,
+        manifest_uri: str | Path,
+        *,
+        storage_client: Any | None = None,
+    ) -> ModelRuntime:
         try:
-            manifest = read_manifest(manifest_path, ModelManifest)
-            artifact_path = Path(manifest.artifact_uri)
-            model = load_verified_artifact(artifact_path, manifest.artifact_sha256)
-        except (ArtifactChecksumError, OSError, ValueError) as error:
+            with tempfile.TemporaryDirectory(prefix="reviewsignal-model-") as temp_dir:
+                staging_dir = Path(temp_dir)
+                manifest_path = download_uri(
+                    str(manifest_uri),
+                    staging_dir / "model-manifest.json",
+                    client=storage_client,
+                )
+                manifest = read_manifest(manifest_path, ModelManifest)
+                artifact_path = download_uri(
+                    manifest.artifact_uri,
+                    staging_dir / "model.joblib",
+                    client=storage_client,
+                )
+                model = load_verified_artifact(artifact_path, manifest.artifact_sha256)
+        except (ArtifactChecksumError, KeyError, OSError, StorageUriError, ValueError) as error:
             raise RuntimeLoadError(f"model artifact checksum or load failure: {error}") from error
         return cls(model, manifest)
 
     @classmethod
     def from_environment(cls) -> ModelRuntime:
-        manifest_path = os.getenv("MODEL_MANIFEST_PATH")
-        if not manifest_path:
-            raise RuntimeLoadError("MODEL_MANIFEST_PATH is not configured")
-        return cls.from_manifest(Path(manifest_path))
+        manifest_uri = os.getenv("MODEL_MANIFEST_URI") or os.getenv("MODEL_MANIFEST_PATH")
+        if not manifest_uri:
+            raise RuntimeLoadError("MODEL_MANIFEST_URI is not configured")
+        return cls.from_manifest(manifest_uri)
 
     def predict(self, text: str) -> dict[str, object]:
         probability = float(self._model.predict_proba([text])[0, 1])

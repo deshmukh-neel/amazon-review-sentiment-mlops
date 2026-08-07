@@ -64,3 +64,37 @@ def test_materialized_fixture_has_balanced_parquet_splits_and_manifest(
     assert all(
         (tmp_path / "processed" / f"{name}.parquet").exists() for name in manifest.row_counts
     )
+
+
+def test_materialized_dataset_can_publish_private_gcs_objects(
+    tmp_path, fixture_path, fake_storage
+) -> None:
+    source_train, source_test = load_jsonl_fixture(fixture_path)
+
+    manifest_path = materialize_dataset(
+        source_train,
+        source_test,
+        output_dir=tmp_path / "processed",
+        publish_prefix="gs://private-data/versions/fixture-v1",
+        storage_client=fake_storage,
+        source="synthetic-fixture",
+        source_revision="fixture-v1",
+        source_checksums={"tiny_reviews.jsonl": FIXTURE_SHA},
+        train_size=16,
+        validation_size=8,
+        test_size=8,
+        seed=42,
+    )
+
+    manifest = read_manifest(manifest_path, DataManifest)
+    assert manifest.split_uris == {
+        "train": "gs://private-data/versions/fixture-v1/train.parquet",
+        "validation": "gs://private-data/versions/fixture-v1/validation.parquet",
+        "test": "gs://private-data/versions/fixture-v1/test.parquet",
+    }
+    assert {
+        "private-data/versions/fixture-v1/train.parquet",
+        "private-data/versions/fixture-v1/validation.parquet",
+        "private-data/versions/fixture-v1/test.parquet",
+        "private-data/versions/fixture-v1/data-manifest.json",
+    } <= fake_storage.objects.keys()

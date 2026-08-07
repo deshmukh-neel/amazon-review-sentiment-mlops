@@ -1,0 +1,60 @@
+name: Terraform plan
+
+on:
+  pull_request:
+    paths:
+      - "infra/terraform/**"
+      - ".github/workflows/terraform-plan.yml"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: terraform-plan-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  plan:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' &&
+      vars.TF_STATE_BUCKET != ''
+    runs-on: ubuntu-latest
+    environment: terraform-plan
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+
+      - id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+
+      - name: Initialize remote state
+        run: >-
+          terraform -chdir=infra/terraform init
+          -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
+
+      - name: Generate plan
+        env:
+          TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID }}
+          TF_VAR_container_image: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_ARTIFACT_REPOSITORY }}/app:${{ github.sha }}
+          TF_VAR_deployment_git_sha: ${{ github.sha }}
+          TF_VAR_billing_account_id: ${{ vars.GCP_BILLING_ACCOUNT_ID }}
+        run: |
+          set +e
+          terraform -chdir=infra/terraform plan -input=false -no-color -out=reviewsignal.tfplan
+          code=$?
+          set -e
+          if [ "$code" -eq 1 ]; then exit 1; fi
+          terraform -chdir=infra/terraform show -no-color reviewsignal.tfplan > infra/terraform/terraform-plan.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan-${{ github.event.pull_request.number }}
+          path: infra/terraform/terraform-plan.txt
+          retention-days: 7

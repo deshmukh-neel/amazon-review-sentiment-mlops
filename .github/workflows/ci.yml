@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-and-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.21"
+          enable-cache: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install locked dependencies
+        run: uv sync --frozen
+
+      - name: Lint and format check
+        run: |
+          uv run ruff check src tests
+          uv run ruff format --check src tests
+
+      - name: Test with coverage gate
+        run: uv run pytest --cov=reviewsignal --cov-report=term-missing --cov-report=xml
+
+      - name: Run synthetic pipeline
+        run: |
+          uv run reviewsignal pipeline \
+            --fixture tests/fixtures/tiny_reviews.jsonl \
+            --data-dir qa/ci-data \
+            --model-dir qa/ci-models \
+            --train-size 16 \
+            --validation-size 8 \
+            --test-size 8 \
+            --git-sha "${GITHUB_SHA}"
+
+      - name: Build production image
+        run: docker build --tag "reviewsignal:${GITHUB_SHA}" .
+
+      - name: Probe production container
+        run: |
+          MODEL_MANIFEST="$(find qa/ci-models -name model-manifest.json -print -quit)"
+          docker run --detach --name reviewsignal-ci \
+            --publish 127.0.0.1:8080:8080 \
+            --volume "${GITHUB_WORKSPACE}:${GITHUB_WORKSPACE}:ro" \
+            --env "MODEL_MANIFEST_PATH=${GITHUB_WORKSPACE}/${MODEL_MANIFEST}" \
+            "reviewsignal:${GITHUB_SHA}"
+          trap 'docker rm --force reviewsignal-ci' EXIT
+          for _ in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8080/readyz; then
+              break
+            fi
+            sleep 1
+          done
+          curl --fail --silent http://127.0.0.1:8080/openapi.json >/dev/null
+          curl --fail --silent \
+            --header 'Content-Type: application/json' \
+            --data '{"text":"excellent quality and reliable performance"}' \
+            http://127.0.0.1:8080/api/v1/predict >/dev/null
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ github.sha }}
+          path: coverage.xml
+
+  terraform-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Format and validate main stack
+        run: |
+          terraform fmt -check -recursive infra/terraform
+          terraform -chdir=infra/terraform init -backend=false
+          terraform -chdir=infra/terraform validate
+
+      - name: Validate state bootstrap
+        run: |
+          terraform -chdir=infra/terraform/bootstrap init -backend=false
+          terraform -chdir=infra/terraform/bootstrap validate
