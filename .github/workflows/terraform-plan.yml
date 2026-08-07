@@ -32,7 +32,7 @@ jobs:
         uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+          service_account: ${{ vars.GCP_PLAN_SERVICE_ACCOUNT }}
 
       - name: Initialize remote state
         run: >-
@@ -44,8 +44,11 @@ jobs:
           TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID }}
           TF_VAR_container_image: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_ARTIFACT_REPOSITORY }}/app:${{ github.sha }}
           TF_VAR_deployment_git_sha: ${{ github.sha }}
-          TF_VAR_billing_account_id: ${{ vars.GCP_BILLING_ACCOUNT_ID }}
+          GCP_BILLING_ACCOUNT_ID: ${{ vars.GCP_BILLING_ACCOUNT_ID }}
         run: |
+          if [ -n "${GCP_BILLING_ACCOUNT_ID}" ]; then
+            export TF_VAR_billing_account_id="${GCP_BILLING_ACCOUNT_ID}"
+          fi
           set +e
           terraform -chdir=infra/terraform plan -input=false -no-color -out=reviewsignal.tfplan
           code=$?

@@ -23,6 +23,7 @@ def test_data_manifest_round_trip_preserves_complete_lineage(tmp_path) -> None:
             "validation": "gs://private-data/validation.parquet",
             "test": "gs://private-data/test.parquet",
         },
+        split_checksums={"train": SHA256, "validation": "b" * 64, "test": "c" * 64},
         row_counts={"train": 80_000, "validation": 10_000, "test": 10_000},
         class_counts={
             "train": {"0": 40_000, "1": 40_000},
@@ -62,6 +63,7 @@ def test_manifest_rejects_unknown_fields() -> None:
             source_checksums={"train": SHA256},
             seed=42,
             split_uris={"train": "train.parquet"},
+            split_checksums={"train": SHA256},
             row_counts={"train": 2},
             class_counts={"train": {"0": 1, "1": 1}},
             created_at=NOW,

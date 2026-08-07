@@ -1,8 +1,9 @@
 name: Deploy main
 
 on:
-  push:
-    branches: [main]
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -10,17 +11,27 @@ permissions:
   id-token: write
 
 concurrency:
-  group: deploy-production
+  group: production-traffic
   cancel-in-progress: false
 
 jobs:
   deploy:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 25
+    env:
+      DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
 
       - id: auth
         uses: google-github-actions/auth@v3
@@ -30,44 +41,113 @@ jobs:
 
       - uses: google-github-actions/setup-gcloud@v3
 
+      - name: Resolve the immutable production model
+        id: production
+        env:
+          PRODUCTION_POINTER: ${{ vars.PRODUCTION_MODEL_MANIFEST_URI }}
+        run: |
+          mkdir -p /tmp/reviewsignal-production
+          gcloud storage cp "${PRODUCTION_POINTER}" /tmp/reviewsignal-production/model-manifest.json
+          MODEL_VERSION="$(jq -er '.model_version' /tmp/reviewsignal-production/model-manifest.json)"
+          PRODUCTION_ROOT="${PRODUCTION_POINTER%/model-manifest.json}"
+          MANIFEST_URI="${PRODUCTION_ROOT}/versions/${MODEL_VERSION}/model-manifest.json"
+          gcloud storage cp "${MANIFEST_URI}" /tmp/reviewsignal-production/immutable-manifest.json
+          jq -e --arg version "${MODEL_VERSION}" '.model_version == $version' \
+            /tmp/reviewsignal-production/immutable-manifest.json >/dev/null
+          {
+            echo "manifest_uri=${MANIFEST_URI}"
+            echo "model_version=${MODEL_VERSION}"
+          } >> "${GITHUB_OUTPUT}"
+
       - name: Configure Artifact Registry
         run: gcloud auth configure-docker "${{ vars.GCP_REGION }}-docker.pkg.dev" --quiet
 
       - name: Build and push immutable image
         env:
-          IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_ARTIFACT_REPOSITORY }}/app:${{ github.sha }}
+          IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_ARTIFACT_REPOSITORY }}/app:${{ env.DEPLOY_SHA }}
         run: |
           docker build --tag "${IMAGE}" .
           docker push "${IMAGE}"
 
-      - name: Deploy with the current production model
+      - name: Deploy with no traffic, smoke test, and migrate traffic
         env:
-          IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_ARTIFACT_REPOSITORY }}/app:${{ github.sha }}
+          IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_ARTIFACT_REPOSITORY }}/app:${{ env.DEPLOY_SHA }}
+          MODEL_MANIFEST_URI: ${{ steps.production.outputs.manifest_uri }}
+          MODEL_VERSION: ${{ steps.production.outputs.model_version }}
         run: |
-          gcloud run deploy "${{ vars.CLOUD_RUN_SERVICE }}" \
-            --project "${{ vars.GCP_PROJECT_ID }}" \
-            --region "${{ vars.GCP_REGION }}" \
+          SERVICE="${{ vars.CLOUD_RUN_SERVICE }}"
+          PROJECT="${{ vars.GCP_PROJECT_ID }}"
+          REGION="${{ vars.GCP_REGION }}"
+          SERVICE_STATE="$(gcloud run services describe "${SERVICE}" \
+            --project "${PROJECT}" --region "${REGION}" --format=json)"
+          PREVIOUS_TRAFFIC="$(printf '%s' "${SERVICE_STATE}" | jq -er \
+            '[.status.traffic[] | select((.percent // 0) > 0 and (.tag // "") == "") | "\(.revisionName)=\(.percent)"] | join(",") | select(length > 0)')"
+          TAG="code-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          TRAFFIC_SHIFTED=false
+          rollback() {
+            if [ "${TRAFFIC_SHIFTED}" = true ]; then
+              gcloud run services update-traffic "${SERVICE}" \
+                --project "${PROJECT}" --region "${REGION}" \
+                --to-revisions "${PREVIOUS_TRAFFIC}" --quiet
+            fi
+          }
+          trap rollback ERR
+
+          gcloud run deploy "${SERVICE}" \
+            --project "${PROJECT}" \
+            --region "${REGION}" \
             --image "${IMAGE}" \
             --service-account "${{ vars.GCP_RUNTIME_SERVICE_ACCOUNT }}" \
-            --set-env-vars "MODEL_MANIFEST_URI=${{ vars.PRODUCTION_MODEL_MANIFEST_URI }}" \
+            --set-env-vars "MODEL_MANIFEST_URI=${MODEL_MANIFEST_URI}" \
+            --revision-suffix "code-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --tag "${TAG}" \
+            --no-traffic \
             --min 0 \
             --max 2 \
             --quiet
 
-      - name: Post-deployment smoke test
-        run: |
-          SERVICE_URL="$(gcloud run services describe "${{ vars.CLOUD_RUN_SERVICE }}" \
-            --project "${{ vars.GCP_PROJECT_ID }}" \
-            --region "${{ vars.GCP_REGION }}" \
-            --format='value(status.url)')"
-          curl --fail --silent "${SERVICE_URL}/" >/dev/null
-          curl --fail --silent "${SERVICE_URL}/readyz" >/dev/null
-          curl --fail --silent "${SERVICE_URL}/api/v1/model" >/dev/null
+          CANDIDATE_STATE="$(gcloud run services describe "${SERVICE}" \
+            --project "${PROJECT}" --region "${REGION}" --format=json)"
+          CANDIDATE_REVISION="$(printf '%s' "${CANDIDATE_STATE}" | jq -er --arg tag "${TAG}" \
+            '[.status.traffic[] | select(.tag == $tag)][0].revisionName')"
+          CANDIDATE_URL="$(printf '%s' "${CANDIDATE_STATE}" | jq -er --arg tag "${TAG}" \
+            '[.status.traffic[] | select(.tag == $tag)][0] | (.uri // .url)')"
+          curl --fail --silent "${CANDIDATE_URL}/" >/dev/null
+          curl --fail --silent "${CANDIDATE_URL}/readyz" >/dev/null
+          curl --fail --silent "${CANDIDATE_URL}/openapi.json" >/dev/null
+          curl --fail --silent "${CANDIDATE_URL}/api/v1/model" \
+            | jq -e --arg version "${MODEL_VERSION}" '.model_version == $version' >/dev/null
           curl --fail --silent \
             --header 'Content-Type: application/json' \
             --data '{"text":"excellent product and reliable quality"}' \
-            "${SERVICE_URL}/api/v1/predict" >/dev/null
+            "${CANDIDATE_URL}/api/v1/predict" \
+            | jq -e '.label == "positive"' >/dev/null
           curl --fail --silent \
             --header 'Content-Type: application/json' \
             --data '{"text":"broken product and terrible support"}' \
-            "${SERVICE_URL}/api/v1/predict" >/dev/null
+            "${CANDIDATE_URL}/api/v1/predict" \
+            | jq -e '.label == "negative"' >/dev/null
+
+          gcloud run services update-traffic "${SERVICE}" \
+            --project "${PROJECT}" --region "${REGION}" \
+            --to-revisions "${CANDIDATE_REVISION}=100" --quiet
+          TRAFFIC_SHIFTED=true
+          SERVICE_URL="$(gcloud run services describe "${SERVICE}" \
+            --project "${PROJECT}" --region "${REGION}" \
+            --format='value(status.url)')"
+          curl --fail --silent "${SERVICE_URL}/" >/dev/null
+          curl --fail --silent "${SERVICE_URL}/readyz" >/dev/null
+          curl --fail --silent "${SERVICE_URL}/openapi.json" >/dev/null
+          curl --fail --silent "${SERVICE_URL}/api/v1/model" \
+            | jq -e --arg version "${MODEL_VERSION}" '.model_version == $version' >/dev/null
+          curl --fail --silent \
+            --header 'Content-Type: application/json' \
+            --data '{"text":"excellent product and reliable quality"}' \
+            "${SERVICE_URL}/api/v1/predict" \
+            | jq -e '.label == "positive"' >/dev/null
+          curl --fail --silent \
+            --header 'Content-Type: application/json' \
+            --data '{"text":"broken product and terrible support"}' \
+            "${SERVICE_URL}/api/v1/predict" \
+            | jq -e '.label == "negative"' >/dev/null
+          trap - ERR

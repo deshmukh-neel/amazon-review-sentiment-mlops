@@ -25,6 +25,7 @@ from sklearn.metrics import (
 )
 from sklearn.pipeline import Pipeline
 
+from reviewsignal.data import sha256_file
 from reviewsignal.manifests import DataManifest, ModelManifest, read_manifest, write_manifest
 from reviewsignal.storage import download_uri, upload_file
 
@@ -35,6 +36,10 @@ class ArtifactChecksumError(RuntimeError):
 
 class PromotionGateError(RuntimeError):
     """Raised when a candidate is not safe to promote."""
+
+
+class SplitChecksumError(RuntimeError):
+    """Raised when materialized training data no longer matches its manifest."""
 
 
 def build_pipeline() -> Pipeline:
@@ -156,16 +161,21 @@ def train_candidate(
     data_manifest = read_manifest(data_manifest_path, DataManifest)
     with tempfile.TemporaryDirectory(prefix="reviewsignal-data-") as temp_dir:
         staging_dir = Path(temp_dir)
-        splits = {
-            name: pd.read_parquet(
-                download_uri(
-                    uri,
-                    staging_dir / f"{name}.parquet",
-                    client=storage_client,
-                )
+        splits: dict[str, pd.DataFrame] = {}
+        for name, uri in data_manifest.split_uris.items():
+            split_path = download_uri(
+                uri,
+                staging_dir / f"{name}.parquet",
+                client=storage_client,
             )
-            for name, uri in data_manifest.split_uris.items()
-        }
+            actual_checksum = sha256_file(split_path)
+            expected_checksum = data_manifest.split_checksums[name]
+            if actual_checksum != expected_checksum:
+                raise SplitChecksumError(
+                    f"{name} split checksum mismatch: expected {expected_checksum}, "
+                    f"got {actual_checksum}"
+                )
+            splits[name] = pd.read_parquet(split_path)
     model = build_pipeline()
     model.fit(splits["train"]["text"], splits["train"]["label"])
     metrics = {

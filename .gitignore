@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+gha-creds-*.json
 .python-version.local
 .venv/
 __pycache__/

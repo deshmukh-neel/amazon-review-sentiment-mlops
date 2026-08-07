@@ -14,4 +14,4 @@ qa
 *.ipynb
 *.png
 *.tfstate*
-
+gha-creds-*.json

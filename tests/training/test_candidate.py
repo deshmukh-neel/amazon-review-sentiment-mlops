@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
+
 from reviewsignal.ingestion import load_jsonl_fixture, materialize_dataset
 from reviewsignal.manifests import ModelManifest, read_manifest
-from reviewsignal.training import load_verified_artifact, train_candidate
+from reviewsignal.training import SplitChecksumError, load_verified_artifact, train_candidate
 
 
 def test_candidate_training_records_metrics_lineage_and_loadable_artifact(
@@ -88,3 +90,29 @@ def test_candidate_can_train_from_gcs_splits_and_publish_remote_artifacts(
     assert manifest.artifact_uri == f"gs://{remote_prefix}/model.joblib"
     assert f"{remote_prefix}/model.joblib" in fake_storage.objects
     assert f"{remote_prefix}/model-manifest.json" in fake_storage.objects
+
+
+def test_candidate_refuses_a_split_that_no_longer_matches_its_manifest(
+    tmp_path, fixture_path
+) -> None:
+    source_train, source_test = load_jsonl_fixture(fixture_path)
+    data_manifest_path = materialize_dataset(
+        source_train,
+        source_test,
+        output_dir=tmp_path / "data",
+        source="synthetic-fixture",
+        source_revision="fixture-v1",
+        source_checksums={"tiny_reviews.jsonl": "f" * 64},
+        train_size=16,
+        validation_size=8,
+        test_size=8,
+        seed=42,
+    )
+    (tmp_path / "data" / "train.parquet").write_bytes(b"tampered split")
+
+    with pytest.raises(SplitChecksumError, match="train split checksum mismatch"):
+        train_candidate(
+            data_manifest_path,
+            output_dir=tmp_path / "models",
+            git_sha="abcdef123456",
+        )

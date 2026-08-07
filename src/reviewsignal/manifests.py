@@ -20,6 +20,7 @@ class DataManifest(StrictManifest):
     source_checksums: dict[str, Sha256]
     seed: int
     split_uris: dict[str, str]
+    split_checksums: dict[str, Sha256]
     row_counts: dict[str, int]
     class_counts: dict[str, dict[str, int]]
     created_at: AwareDatetime

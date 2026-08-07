@@ -108,7 +108,7 @@ resource "google_cloud_run_v2_job" "monthly_candidate" {
         resources {
           limits = {
             cpu    = "4"
-            memory = "8Gi"
+            memory = "16Gi"
           }
         }
       }

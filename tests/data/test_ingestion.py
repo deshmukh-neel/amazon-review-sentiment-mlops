@@ -25,6 +25,7 @@ def test_hugging_face_source_resolution_records_full_sha_and_lfs_checksums() -> 
             SimpleNamespace(rfilename="README.md", lfs=None),
         ],
     )
+
     class RecordingApi:
         files_metadata = False
 
@@ -68,6 +69,8 @@ def test_materialized_fixture_has_balanced_parquet_splits_and_manifest(
         "test": {"0": 4, "1": 4},
     }
     assert manifest.source_checksums == {"tiny_reviews.jsonl": FIXTURE_SHA}
+    assert set(manifest.split_checksums) == {"train", "validation", "test"}
+    assert all(len(checksum) == 64 for checksum in manifest.split_checksums.values())
     assert manifest.dataset_version.startswith("synthetic-fixture-")
     assert all(
         (tmp_path / "processed" / f"{name}.parquet").exists() for name in manifest.row_counts

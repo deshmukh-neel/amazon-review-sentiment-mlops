@@ -109,10 +109,12 @@ def materialize_dataset(
     )
     output_dir.mkdir(parents=True, exist_ok=True)
     split_uris: dict[str, str] = {}
+    split_checksums: dict[str, str] = {}
     normalized_publish_prefix = publish_prefix.rstrip("/") if publish_prefix else None
     for name, frame in splits.items():
         destination = output_dir / f"{name}.parquet"
         frame.to_parquet(destination, index=False)
+        split_checksums[name] = sha256_file(destination)
         if normalized_publish_prefix:
             remote_uri = f"{normalized_publish_prefix}/{name}.parquet"
             upload_file(destination, remote_uri, client=storage_client)
@@ -127,6 +129,7 @@ def materialize_dataset(
         source_checksums=source_checksums,
         seed=seed,
         split_uris=split_uris,
+        split_checksums=split_checksums,
         row_counts={name: len(frame) for name, frame in splits.items()},
         class_counts={
             name: {

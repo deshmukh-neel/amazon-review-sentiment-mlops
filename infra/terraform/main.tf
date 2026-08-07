@@ -26,6 +26,10 @@ locals {
     "gs://${google_storage_bucket.models.name}/production/model-manifest.json"
   )
   repository_full_name = "${var.github_owner}/${var.github_repository}"
+  production_workflow_refs = toset([
+    "${var.github_owner}/${var.github_repository}/.github/workflows/deploy.yml@refs/heads/main",
+    "${var.github_owner}/${var.github_repository}/.github/workflows/promote-model.yml@refs/heads/main",
+  ])
 }
 
 resource "google_project_service" "required" {
@@ -55,6 +59,7 @@ resource "google_storage_bucket" "data" {
     condition {
       age            = 365
       matches_prefix = ["versions/"]
+      with_state     = "ANY"
     }
   }
 
@@ -80,6 +85,7 @@ resource "google_storage_bucket" "models" {
     condition {
       age            = 90
       matches_prefix = ["candidates/"]
+      with_state     = "ANY"
     }
   }
 
@@ -101,6 +107,15 @@ resource "google_artifact_registry_repository" "containers" {
     condition {
       tag_state  = "UNTAGGED"
       older_than = "2592000s"
+    }
+  }
+
+  cleanup_policies {
+    id     = "delete-images-after-90-days"
+    action = "DELETE"
+    condition {
+      tag_state  = "ANY"
+      older_than = "7776000s"
     }
   }
 

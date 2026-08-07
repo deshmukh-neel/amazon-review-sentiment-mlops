@@ -4,26 +4,34 @@ on:
   workflow_dispatch:
     inputs:
       candidate_manifest_uri:
-        description: Immutable gs:// candidate model manifest URI
+        description: Immutable candidate model manifest in this project's candidates prefix
         required: true
         type: string
+      initial_promotion:
+        description: Confirm that no production model exists yet
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
   id-token: write
 
 concurrency:
-  group: promote-production-model
+  group: production-traffic
   cancel-in-progress: false
 
 jobs:
   promote:
     runs-on: ubuntu-latest
     environment: production
-    timeout-minutes: 25
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - uses: astral-sh/setup-uv@v6
         with:
           version: "0.11.21"
@@ -33,6 +41,9 @@ jobs:
 
       - run: uv sync --frozen
 
+      - name: Build credential-free verification sandbox
+        run: docker build --tag "reviewsignal-verifier:${GITHUB_SHA}" .
+
       - id: auth
         uses: google-github-actions/auth@v3
         with:
@@ -41,50 +52,132 @@ jobs:
 
       - uses: google-github-actions/setup-gcloud@v3
 
-      - name: Verify checksum and promotion metrics
+      - name: Pin and validate candidate provenance
+        id: candidate
         env:
           CANDIDATE_MANIFEST_URI: ${{ inputs.candidate_manifest_uri }}
-          PRODUCTION_MANIFEST_URI: ${{ vars.PRODUCTION_MODEL_MANIFEST_URI }}
+          PRODUCTION_POINTER: ${{ vars.PRODUCTION_MODEL_MANIFEST_URI }}
         run: |
+          MODEL_BUCKET_ROOT="${PRODUCTION_POINTER%/production/model-manifest.json}"
+          CANDIDATE_PREFIX="${MODEL_BUCKET_ROOT}/candidates/"
+          case "${CANDIDATE_MANIFEST_URI}" in
+            "${CANDIDATE_PREFIX}"*/model-manifest.json) ;;
+            *) echo "Candidate must be inside ${CANDIDATE_PREFIX}" >&2; exit 1 ;;
+          esac
+
           mkdir -p /tmp/reviewsignal-candidate
-          gcloud storage cp "${CANDIDATE_MANIFEST_URI}" /tmp/reviewsignal-candidate/model-manifest.json
-          CANDIDATE_ARTIFACT_URI="$(jq -r '.artifact_uri' /tmp/reviewsignal-candidate/model-manifest.json)"
-          gcloud storage cp "${CANDIDATE_ARTIFACT_URI}" /tmp/reviewsignal-candidate/model.joblib
-          jq '.artifact_uri = "/tmp/reviewsignal-candidate/model.joblib"' \
+          MANIFEST_GENERATION="$(gcloud storage objects describe \
+            "${CANDIDATE_MANIFEST_URI}" --format='value(generation)')"
+          test -n "${MANIFEST_GENERATION}"
+          gcloud storage cp "${CANDIDATE_MANIFEST_URI}#${MANIFEST_GENERATION}" \
+            /tmp/reviewsignal-candidate/model-manifest.json
+
+          MODEL_VERSION="$(jq -er '.model_version' \
+            /tmp/reviewsignal-candidate/model-manifest.json)"
+          GIT_SHA="$(jq -er '.git_sha' /tmp/reviewsignal-candidate/model-manifest.json)"
+          DATASET_VERSION="$(jq -er '.dataset_version' \
+            /tmp/reviewsignal-candidate/model-manifest.json)"
+          EXPECTED_MANIFEST_URI="${CANDIDATE_PREFIX}${MODEL_VERSION}/model-manifest.json"
+          EXPECTED_ARTIFACT_URI="${CANDIDATE_PREFIX}${MODEL_VERSION}/model.joblib"
+          test "${CANDIDATE_MANIFEST_URI}" = "${EXPECTED_MANIFEST_URI}"
+          jq -e --arg uri "${EXPECTED_ARTIFACT_URI}" '.artifact_uri == $uri' \
+            /tmp/reviewsignal-candidate/model-manifest.json >/dev/null
+          [[ "${MODEL_VERSION}" =~ ^[0-9]{8}T[0-9]{6}Z-[a-f0-9]{7}$ ]]
+          [[ "${GIT_SHA}" =~ ^[a-f0-9]{40}$ ]]
+          test "${MODEL_VERSION##*-}" = "${GIT_SHA:0:7}"
+          [[ "${DATASET_VERSION}" == mteb-amazon_polarity-*-s42 ]]
+          git cat-file -e "${GIT_SHA}^{commit}"
+          git merge-base --is-ancestor "${GIT_SHA}" HEAD
+
+          ARTIFACT_GENERATION="$(gcloud storage objects describe \
+            "${EXPECTED_ARTIFACT_URI}" --format='value(generation)')"
+          test -n "${ARTIFACT_GENERATION}"
+          gcloud storage cp "${EXPECTED_ARTIFACT_URI}#${ARTIFACT_GENERATION}" \
+            /tmp/reviewsignal-candidate/model.joblib
+          jq '.artifact_uri = "/candidate/model.joblib"' \
             /tmp/reviewsignal-candidate/model-manifest.json \
             > /tmp/reviewsignal-candidate/local-manifest.json
-          if gcloud storage cp "${PRODUCTION_MANIFEST_URI}" /tmp/production-model-manifest.json; then
-            PRODUCTION_MACRO_F1="$(jq -r '.metrics.validation.macro_f1' /tmp/production-model-manifest.json)"
-            uv run reviewsignal evaluate \
-              --model-manifest /tmp/reviewsignal-candidate/local-manifest.json \
-              --production-macro-f1 "${PRODUCTION_MACRO_F1}"
+
+          {
+            echo "artifact_uri=${EXPECTED_ARTIFACT_URI}"
+            echo "artifact_generation=${ARTIFACT_GENERATION}"
+            echo "model_version=${MODEL_VERSION}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Fail closed and verify promotion metrics in isolation
+        id: gate
+        env:
+          INITIAL_PROMOTION: ${{ inputs.initial_promotion }}
+          PRODUCTION_POINTER: ${{ vars.PRODUCTION_MODEL_MANIFEST_URI }}
+        run: |
+          PRODUCTION_ROOT="${PRODUCTION_POINTER%/model-manifest.json}"
+          MODEL_BUCKET_ROOT="${PRODUCTION_ROOT%/production}"
+          PRODUCTION_GENERATION=0
+          PRODUCTION_MACRO_F1=""
+          if PRODUCTION_GENERATION="$(gcloud storage objects describe \
+            "${PRODUCTION_POINTER}" --format='value(generation)' 2>/dev/null)"; then
+            gcloud storage cp "${PRODUCTION_POINTER}#${PRODUCTION_GENERATION}" \
+              /tmp/reviewsignal-candidate/previous-production-manifest.json
+            PRODUCTION_MACRO_F1="$(jq -er '.metrics.validation.macro_f1' \
+              /tmp/reviewsignal-candidate/previous-production-manifest.json)"
           else
-            uv run reviewsignal evaluate \
-              --model-manifest /tmp/reviewsignal-candidate/local-manifest.json
+            if [ "${INITIAL_PROMOTION}" != "true" ]; then
+              echo "Production pointer unavailable; refusing to bypass the regression gate." >&2
+              exit 1
+            fi
+            EXISTING_VERSION="$(gcloud storage objects list "${MODEL_BUCKET_ROOT}" \
+              --filter='name~^production/versions/' --limit=1 --format='value(name)')"
+            if [ -n "${EXISTING_VERSION}" ]; then
+              echo "Production versions already exist; initial promotion is not allowed." >&2
+              exit 1
+            fi
           fi
 
-      - name: Deploy candidate with zero traffic, smoke test, and promote
+          VERIFY_ARGS=(reviewsignal evaluate \
+            --model-manifest /candidate/local-manifest.json)
+          if [ -n "${PRODUCTION_MACRO_F1}" ]; then
+            VERIFY_ARGS+=(--production-macro-f1 "${PRODUCTION_MACRO_F1}")
+          fi
+          docker run --rm \
+            --network none \
+            --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,size=64m \
+            --cap-drop ALL \
+            --security-opt no-new-privileges \
+            --user 10001:10001 \
+            --volume /tmp/reviewsignal-candidate:/candidate:ro \
+            "reviewsignal-verifier:${GITHUB_SHA}" \
+            "${VERIFY_ARGS[@]}"
+          echo "production_generation=${PRODUCTION_GENERATION}" >> "${GITHUB_OUTPUT}"
+
+      - name: Deploy candidate with zero traffic, smoke test, promote, and update pointer
         env:
+          ARTIFACT_URI: ${{ steps.candidate.outputs.artifact_uri }}
+          ARTIFACT_GENERATION: ${{ steps.candidate.outputs.artifact_generation }}
           CANDIDATE_MANIFEST_URI: ${{ inputs.candidate_manifest_uri }}
+          MODEL_VERSION: ${{ steps.candidate.outputs.model_version }}
+          PRODUCTION_GENERATION: ${{ steps.gate.outputs.production_generation }}
+          PRODUCTION_POINTER: ${{ vars.PRODUCTION_MODEL_MANIFEST_URI }}
         run: |
           SERVICE="${{ vars.CLOUD_RUN_SERVICE }}"
           PROJECT="${{ vars.GCP_PROJECT_ID }}"
           REGION="${{ vars.GCP_REGION }}"
-          PREVIOUS_REVISION="$(gcloud run revisions list \
-            --service "${SERVICE}" --project "${PROJECT}" --region "${REGION}" \
-            --sort-by='~metadata.creationTimestamp' --limit=1 \
-            --format='value(metadata.name)')"
-          IMAGE="$(gcloud run services describe "${SERVICE}" \
+          SERVICE_STATE="$(gcloud run services describe "${SERVICE}" \
+            --project "${PROJECT}" --region "${REGION}" --format=json)"
+          PREVIOUS_TRAFFIC="$(printf '%s' "${SERVICE_STATE}" | jq -er \
+            '[.status.traffic[] | select((.percent // 0) > 0 and (.tag // "") == "") | "\(.revisionName)=\(.percent)"] | join(",") | select(length > 0)')"
+          SERVING_REVISION="$(printf '%s' "${SERVICE_STATE}" | jq -er \
+            '[.status.traffic[] | select((.percent // 0) == 100 and (.tag // "") == "")][0].revisionName')"
+          IMAGE="$(gcloud run revisions describe "${SERVING_REVISION}" \
             --project "${PROJECT}" --region "${REGION}" \
-            --format='value(spec.template.spec.containers[0].image)')"
-          SUFFIX="candidate-${GITHUB_RUN_ID}"
-          CANDIDATE_REVISION="${SERVICE}-${SUFFIX}"
+            --format='value(spec.containers[0].image)')"
+          TAG="model-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           TRAFFIC_SHIFTED=false
           rollback() {
             if [ "${TRAFFIC_SHIFTED}" = true ]; then
               gcloud run services update-traffic "${SERVICE}" \
                 --project "${PROJECT}" --region "${REGION}" \
-                --to-revisions "${PREVIOUS_REVISION}=100" --quiet
+                --to-revisions "${PREVIOUS_TRAFFIC}" --quiet
             fi
           }
           trap rollback ERR
@@ -92,35 +185,39 @@ jobs:
           gcloud run deploy "${SERVICE}" \
             --project "${PROJECT}" --region "${REGION}" \
             --image "${IMAGE}" \
-            --revision-suffix "${SUFFIX}" \
+            --revision-suffix "model-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
             --set-env-vars "MODEL_MANIFEST_URI=${CANDIDATE_MANIFEST_URI}" \
+            --tag "${TAG}" \
             --no-traffic --quiet
-          gcloud run services update-traffic "${SERVICE}" \
-            --project "${PROJECT}" --region "${REGION}" \
-            --set-tags "candidate=${CANDIDATE_REVISION}" --quiet
-          CANDIDATE_URL="$(gcloud run services describe "${SERVICE}" \
-            --project "${PROJECT}" --region "${REGION}" \
-            --format="value(status.traffic.filter(tag:candidate).url)")"
+          CANDIDATE_STATE="$(gcloud run services describe "${SERVICE}" \
+            --project "${PROJECT}" --region "${REGION}" --format=json)"
+          CANDIDATE_REVISION="$(printf '%s' "${CANDIDATE_STATE}" | jq -er --arg tag "${TAG}" \
+            '[.status.traffic[] | select(.tag == $tag)][0].revisionName')"
+          CANDIDATE_URL="$(printf '%s' "${CANDIDATE_STATE}" | jq -er --arg tag "${TAG}" \
+            '[.status.traffic[] | select(.tag == $tag)][0] | (.uri // .url)')"
+          curl --fail --silent "${CANDIDATE_URL}/" >/dev/null
           curl --fail --silent "${CANDIDATE_URL}/readyz" >/dev/null
           curl --fail --silent "${CANDIDATE_URL}/openapi.json" >/dev/null
-          curl --fail --silent \
-            --header 'Content-Type: application/json' \
+          curl --fail --silent "${CANDIDATE_URL}/api/v1/model" \
+            | jq -e --arg version "${MODEL_VERSION}" '.model_version == $version' >/dev/null
+          curl --fail --silent --header 'Content-Type: application/json' \
             --data '{"text":"excellent product and reliable quality"}' \
-            "${CANDIDATE_URL}/api/v1/predict" >/dev/null
-          curl --fail --silent \
-            --header 'Content-Type: application/json' \
+            "${CANDIDATE_URL}/api/v1/predict" \
+            | jq -e '.label == "positive"' >/dev/null
+          curl --fail --silent --header 'Content-Type: application/json' \
             --data '{"text":"broken product and terrible support"}' \
-            "${CANDIDATE_URL}/api/v1/predict" >/dev/null
+            "${CANDIDATE_URL}/api/v1/predict" \
+            | jq -e '.label == "negative"' >/dev/null
 
-          CANDIDATE_ARTIFACT_URI="$(jq -r '.artifact_uri' /tmp/reviewsignal-candidate/model-manifest.json)"
-          PRODUCTION_PREFIX="${{ vars.PRODUCTION_MODEL_MANIFEST_URI }}"
-          PRODUCTION_PREFIX="${PRODUCTION_PREFIX%/model-manifest.json}"
-          gcloud storage cp "${CANDIDATE_ARTIFACT_URI}" "${PRODUCTION_PREFIX}/model.joblib"
-          jq --arg uri "${PRODUCTION_PREFIX}/model.joblib" '.artifact_uri = $uri' \
+          PRODUCTION_ROOT="${PRODUCTION_POINTER%/model-manifest.json}"
+          VERSION_PREFIX="${PRODUCTION_ROOT}/versions/${MODEL_VERSION}"
+          gcloud storage cp "${ARTIFACT_URI}#${ARTIFACT_GENERATION}" \
+            "${VERSION_PREFIX}/model.joblib" --if-generation-match=0
+          jq --arg uri "${VERSION_PREFIX}/model.joblib" '.artifact_uri = $uri' \
             /tmp/reviewsignal-candidate/model-manifest.json \
             > /tmp/reviewsignal-candidate/production-manifest.json
           gcloud storage cp /tmp/reviewsignal-candidate/production-manifest.json \
-            "${PRODUCTION_PREFIX}/model-manifest.json"
+            "${VERSION_PREFIX}/model-manifest.json" --if-generation-match=0
 
           gcloud run services update-traffic "${SERVICE}" \
             --project "${PROJECT}" --region "${REGION}" \
@@ -129,5 +226,21 @@ jobs:
           SERVICE_URL="$(gcloud run services describe "${SERVICE}" \
             --project "${PROJECT}" --region "${REGION}" \
             --format='value(status.url)')"
+          curl --fail --silent "${SERVICE_URL}/" >/dev/null
           curl --fail --silent "${SERVICE_URL}/readyz" >/dev/null
+          curl --fail --silent "${SERVICE_URL}/openapi.json" >/dev/null
+          curl --fail --silent "${SERVICE_URL}/api/v1/model" \
+            | jq -e --arg version "${MODEL_VERSION}" '.model_version == $version' >/dev/null
+          curl --fail --silent --header 'Content-Type: application/json' \
+            --data '{"text":"excellent product and reliable quality"}' \
+            "${SERVICE_URL}/api/v1/predict" \
+            | jq -e '.label == "positive"' >/dev/null
+          curl --fail --silent --header 'Content-Type: application/json' \
+            --data '{"text":"broken product and terrible support"}' \
+            "${SERVICE_URL}/api/v1/predict" \
+            | jq -e '.label == "negative"' >/dev/null
+
+          gcloud storage cp /tmp/reviewsignal-candidate/production-manifest.json \
+            "${PRODUCTION_POINTER}" \
+            --if-generation-match="${PRODUCTION_GENERATION}"
           trap - ERR

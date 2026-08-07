@@ -85,12 +85,14 @@ def create_app(runtime: RuntimeProtocol | None = None) -> FastAPI:
         response.headers["X-Request-ID"] = request_id
         duration_ms = (time.perf_counter() - started) * 1000
         logger.info(
-            "request_complete request_id=%s method=%s path=%s status=%s duration_ms=%.2f",
+            "request_complete request_id=%s method=%s path=%s status=%s "
+            "duration_ms=%.2f model_version=%s",
             request_id,
             request.method,
             request.url.path,
             response.status_code,
             duration_ms,
+            selected_runtime.model_version,
         )
         return response
 

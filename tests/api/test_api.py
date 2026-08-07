@@ -86,6 +86,7 @@ def test_submitted_review_text_never_appears_in_logs(caplog) -> None:
     assert response.status_code == 200
     assert submitted_text not in caplog.text
     assert "request_id=" in caplog.text
+    assert "model_version=20260807T123456Z-abcdef1" in caplog.text
 
 
 def test_health_readiness_metadata_docs_and_page(client: TestClient) -> None:
