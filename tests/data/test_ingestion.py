@@ -25,12 +25,20 @@ def test_hugging_face_source_resolution_records_full_sha_and_lfs_checksums() -> 
             SimpleNamespace(rfilename="README.md", lfs=None),
         ],
     )
-    api = SimpleNamespace(dataset_info=lambda repo_id, revision: dataset_info)
+    class RecordingApi:
+        files_metadata = False
+
+        def dataset_info(self, repo_id, revision, *, files_metadata=False):
+            self.files_metadata = files_metadata
+            return dataset_info
+
+    api = RecordingApi()
 
     revision, checksums = resolve_hugging_face_source("mteb/amazon_polarity", "ec149c1", api=api)
 
     assert revision == full_sha
     assert checksums == {"data/train-00000-of-00001.parquet": "a" * 64}
+    assert api.files_metadata is True
 
 
 def test_materialized_fixture_has_balanced_parquet_splits_and_manifest(

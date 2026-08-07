@@ -30,7 +30,11 @@ def resolve_hugging_face_source(
     *,
     api: Any | None = None,
 ) -> tuple[str, dict[str, str]]:
-    dataset_info = (api or HfApi()).dataset_info(repo_id, revision=revision)
+    dataset_info = (api or HfApi()).dataset_info(
+        repo_id,
+        revision=revision,
+        files_metadata=True,
+    )
     full_revision = str(dataset_info.sha)
     checksums: dict[str, str] = {}
     for sibling in dataset_info.siblings or []:
