@@ -98,7 +98,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.11,<3" },
     { name = "scikit-learn", specifier = ">=1.7,<2" },
     { name = "typer", specifier = ">=0.16,<1" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.35,<1" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.52.1,<1" },
 ]
 
 [package.metadata.requires-dev]
