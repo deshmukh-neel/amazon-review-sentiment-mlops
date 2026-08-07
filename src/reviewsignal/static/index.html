@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="ReviewSignal is a reproducible Amazon review sentiment model and public API demonstration."
+    />
+    <title>ReviewSignal — Amazon review sentiment</title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/static/styles.css" />
+    <script src="/static/app.js" defer></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="/" aria-label="ReviewSignal home">
+        <span class="brand-mark" aria-hidden="true">R</span>
+        <span>ReviewSignal</span>
+      </a>
+      <nav aria-label="Primary navigation">
+        <a href="#methodology">Methodology</a>
+        <a href="#model">Model card</a>
+        <a href="/docs">API docs</a>
+        <a class="github-link" href="https://github.com/deshmukh-neel/amazon-review-sentiment-mlops">GitHub ↗</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="eyebrow">PRODUCTION ML, MADE VISIBLE</div>
+        <h1 id="hero-title">Understand a review in seconds.</h1>
+        <p class="hero-copy">
+          A reproducible sentiment model, from training data to production API.
+        </p>
+      </section>
+
+      <section class="workspace" aria-labelledby="workspace-title">
+        <div class="workspace-grid">
+          <div class="input-panel">
+            <div class="workspace-heading">
+              <div>
+            <div class="section-number">01 / TRY THE MODEL</div>
+            <h2 id="workspace-title">Analyze a customer review</h2>
+              </div>
+              <span class="status-pill"><span aria-hidden="true"></span> Live model</span>
+            </div>
+
+            <form id="prediction-form">
+              <label for="review-text">Review text</label>
+              <div class="textarea-wrap">
+                <textarea
+                  id="review-text"
+                  name="text"
+                  maxlength="5000"
+                  required
+                  placeholder="Paste an English Amazon review here…"
+                >I love these headphones — the sound is clear and the battery lasts all day.</textarea>
+                <span id="character-count" aria-live="off">79 / 5000</span>
+              </div>
+              <div class="form-actions">
+                <button id="analyze-button" type="submit">Analyze sentiment <span>→</span></button>
+                <p>Review text is processed in memory and is never stored or logged.</p>
+              </div>
+            </form>
+
+            <div class="examples" aria-label="Example reviews">
+              <span>TRY AN EXAMPLE</span>
+              <button type="button" data-example="The quality is excellent and setup took less than a minute.">Positive review</button>
+              <button type="button" data-example="It stopped working after one day and support never replied.">Negative review</button>
+            </div>
+          </div>
+
+          <div id="result" class="result result--idle" aria-live="polite" aria-atomic="true">
+            <div class="result-heading">
+              <span class="result-icon" aria-hidden="true">✓</span>
+              <span id="result-label" class="result-label">Ready</span>
+            </div>
+            <div class="result-score">
+              <strong id="result-probability">—</strong>
+              <span>positive probability</span>
+            </div>
+            <div class="probability-meter" aria-hidden="true">
+              <span id="probability-fill"></span>
+            </div>
+            <div class="meter-ticks" aria-hidden="true"><span>0%</span><span>50%</span><span>100%</span></div>
+            <dl>
+              <div><dt>MODEL VERSION</dt><dd id="result-model">loading…</dd></div>
+              <div><dt>REQUEST ID</dt><dd id="result-request">generated after analysis</dd></div>
+            </dl>
+          </div>
+        </div>
+      </section>
+
+      <section id="methodology" class="methodology" aria-labelledby="methodology-title">
+        <div class="section-number">02 / REPRODUCIBILITY</div>
+        <h2 id="methodology-title">From raw data to a verified model.</h2>
+        <p>Every candidate is tied to pinned data, deterministic splits, immutable code, and explicit promotion gates.</p>
+        <ol class="pipeline-steps">
+          <li><span>01</span><strong>Pin &amp; validate</strong><code>uv run reviewsignal ingest</code></li>
+          <li><span>02</span><strong>Train</strong><code>uv run reviewsignal train</code></li>
+          <li><span>03</span><strong>Gate</strong><code>uv run reviewsignal evaluate</code></li>
+          <li><span>04</span><strong>Deploy</strong><code>terraform apply</code></li>
+        </ol>
+      </section>
+
+      <section id="model" class="model-details" aria-labelledby="model-title">
+        <div>
+          <div class="section-number">03 / MODEL CARD</div>
+          <h2 id="model-title">Transparent by design.</h2>
+        </div>
+        <div class="detail-grid">
+          <article>
+            <h3>Methodology</h3>
+            <p>Word TF-IDF unigrams and bigrams feed a regularized logistic regression classifier.</p>
+          </article>
+          <article>
+            <h3>Limitations</h3>
+            <p>Binary English sentiment only. Sarcasm, mixed opinions, domain shift, and neutral reviews can reduce reliability.</p>
+          </article>
+          <article>
+            <h3>Demonstration only</h3>
+            <p>Predictions are for portfolio demonstration, not decisions about people, products, or businesses.</p>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <span>ReviewSignal</span>
+      <p>Built as an ML/MLOps portfolio project · Python · scikit-learn · FastAPI · Cloud Run</p>
+      <a href="/docs">OpenAPI docs ↗</a>
+    </footer>
+  </body>
+</html>

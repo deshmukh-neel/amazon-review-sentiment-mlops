@@ -25,7 +25,7 @@ models/
 *.csv
 !tests/fixtures/*.jsonl
 !tests/data/
-!tests/data/**
+!tests/data/*.py
 
 # Notebooks
 .ipynb_checkpoints/
