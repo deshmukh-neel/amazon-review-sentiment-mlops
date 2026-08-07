@@ -117,6 +117,14 @@ resource "google_project_iam_member" "github_promoter_roles" {
   member  = "serviceAccount:${google_service_account.github_promoter.email}"
 }
 
+resource "google_artifact_registry_repository_iam_member" "github_promoter_registry_reader" {
+  project    = var.project_id
+  location   = google_artifact_registry_repository.containers.location
+  repository = google_artifact_registry_repository.containers.name
+  role       = "roles/artifactregistry.reader"
+  member     = "serviceAccount:${google_service_account.github_promoter.email}"
+}
+
 resource "google_project_iam_member" "github_plan_roles" {
   for_each = toset([
     "roles/artifactregistry.reader",
