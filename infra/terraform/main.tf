@@ -26,10 +26,9 @@ locals {
     "gs://${google_storage_bucket.models.name}/production/model-manifest.json"
   )
   repository_full_name = "${var.github_owner}/${var.github_repository}"
-  production_workflow_refs = toset([
-    "${var.github_owner}/${var.github_repository}/.github/workflows/deploy.yml@refs/heads/main",
-    "${var.github_owner}/${var.github_repository}/.github/workflows/promote-model.yml@refs/heads/main",
-  ])
+  deploy_workflow_ref  = "${local.repository_full_name}/.github/workflows/deploy.yml@refs/heads/main"
+  promote_workflow_ref = "${local.repository_full_name}/.github/workflows/promote-model.yml@refs/heads/main"
+  plan_workflow_ref    = "${local.repository_full_name}/.github/workflows/terraform-plan.yml@refs/heads/main"
 }
 
 resource "google_project_service" "required" {

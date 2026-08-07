@@ -48,7 +48,7 @@ jobs:
         uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+          service_account: ${{ vars.GCP_PROMOTER_SERVICE_ACCOUNT }}
 
       - uses: google-github-actions/setup-gcloud@v3
 
@@ -182,11 +182,22 @@ jobs:
           }
           trap rollback ERR
 
+          PRODUCTION_ROOT="${PRODUCTION_POINTER%/model-manifest.json}"
+          VERSION_PREFIX="${PRODUCTION_ROOT}/versions/${MODEL_VERSION}"
+          IMMUTABLE_MANIFEST_URI="${VERSION_PREFIX}/model-manifest.json"
+          gcloud storage cp "${ARTIFACT_URI}#${ARTIFACT_GENERATION}" \
+            "${VERSION_PREFIX}/model.joblib" --if-generation-match=0
+          jq --arg uri "${VERSION_PREFIX}/model.joblib" '.artifact_uri = $uri' \
+            /tmp/reviewsignal-candidate/model-manifest.json \
+            > /tmp/reviewsignal-candidate/production-manifest.json
+          gcloud storage cp /tmp/reviewsignal-candidate/production-manifest.json \
+            "${IMMUTABLE_MANIFEST_URI}" --if-generation-match=0
+
           gcloud run deploy "${SERVICE}" \
             --project "${PROJECT}" --region "${REGION}" \
             --image "${IMAGE}" \
             --revision-suffix "model-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
-            --set-env-vars "MODEL_MANIFEST_URI=${CANDIDATE_MANIFEST_URI}" \
+            --set-env-vars "MODEL_MANIFEST_URI=${IMMUTABLE_MANIFEST_URI}" \
             --tag "${TAG}" \
             --no-traffic --quiet
           CANDIDATE_STATE="$(gcloud run services describe "${SERVICE}" \
@@ -208,16 +219,6 @@ jobs:
             --data '{"text":"broken product and terrible support"}' \
             "${CANDIDATE_URL}/api/v1/predict" \
             | jq -e '.label == "negative"' >/dev/null
-
-          PRODUCTION_ROOT="${PRODUCTION_POINTER%/model-manifest.json}"
-          VERSION_PREFIX="${PRODUCTION_ROOT}/versions/${MODEL_VERSION}"
-          gcloud storage cp "${ARTIFACT_URI}#${ARTIFACT_GENERATION}" \
-            "${VERSION_PREFIX}/model.joblib" --if-generation-match=0
-          jq --arg uri "${VERSION_PREFIX}/model.joblib" '.artifact_uri = $uri' \
-            /tmp/reviewsignal-candidate/model-manifest.json \
-            > /tmp/reviewsignal-candidate/production-manifest.json
-          gcloud storage cp /tmp/reviewsignal-candidate/production-manifest.json \
-            "${VERSION_PREFIX}/model-manifest.json" --if-generation-match=0
 
           gcloud run services update-traffic "${SERVICE}" \
             --project "${PROJECT}" --region "${REGION}" \

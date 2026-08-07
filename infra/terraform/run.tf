@@ -66,7 +66,7 @@ resource "google_cloud_run_v2_service" "api" {
   }
 
   lifecycle {
-    ignore_changes = [traffic]
+    ignore_changes = [template, traffic]
   }
 
   depends_on = [

@@ -101,6 +101,9 @@ def test_artifact_round_trip_requires_the_expected_checksum(tmp_path) -> None:
         (0.84, 0.50, None, "0.85"),
         (0.85, 0.71, None, "0.15"),
         (0.88, 0.50, 0.90, "regresses"),
+        (float("nan"), 0.50, None, "finite"),
+        (0.90, float("inf"), None, "finite"),
+        (0.90, 0.50, -0.01, "between 0 and 1"),
     ],
 )
 def test_promotion_gate_blocks_weak_or_regressing_candidates(

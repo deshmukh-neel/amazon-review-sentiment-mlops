@@ -27,6 +27,10 @@ output "github_plan_service_account" {
   value = google_service_account.github_plan.email
 }
 
+output "github_promoter_service_account" {
+  value = google_service_account.github_promoter.email
+}
+
 output "production_model_manifest_uri" {
   value = local.production_model_manifest_uri
 }

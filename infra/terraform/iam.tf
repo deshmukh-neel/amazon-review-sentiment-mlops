@@ -23,6 +23,11 @@ resource "google_service_account" "github_plan" {
   display_name = "ReviewSignal GitHub Terraform plan"
 }
 
+resource "google_service_account" "github_promoter" {
+  account_id   = "reviewsignal-github-promote"
+  display_name = "ReviewSignal GitHub model promoter"
+}
+
 resource "google_storage_bucket_iam_member" "runtime_model_reader" {
   bucket = google_storage_bucket.models.name
   role   = "roles/storage.objectViewer"
@@ -53,10 +58,40 @@ resource "google_storage_bucket_iam_member" "trainer_model_writer" {
   }
 }
 
-resource "google_storage_bucket_iam_member" "deployer_model_writer" {
+resource "google_storage_bucket_iam_member" "deployer_model_reader" {
+  bucket = google_storage_bucket.models.name
+  role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${google_service_account.github_deployer.email}"
+}
+
+resource "google_storage_bucket_iam_member" "promoter_model_reader" {
+  bucket = google_storage_bucket.models.name
+  role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${google_service_account.github_promoter.email}"
+}
+
+resource "google_storage_bucket_iam_member" "promoter_version_creator" {
+  bucket = google_storage_bucket.models.name
+  role   = "roles/storage.objectCreator"
+  member = "serviceAccount:${google_service_account.github_promoter.email}"
+
+  condition {
+    title       = "create_production_versions_only"
+    description = "Promotion can create immutable production versions but cannot replace them."
+    expression  = "resource.name.startsWith('projects/_/buckets/${google_storage_bucket.models.name}/objects/production/versions/')"
+  }
+}
+
+resource "google_storage_bucket_iam_member" "promoter_pointer_admin" {
   bucket = google_storage_bucket.models.name
   role   = "roles/storage.objectAdmin"
-  member = "serviceAccount:${google_service_account.github_deployer.email}"
+  member = "serviceAccount:${google_service_account.github_promoter.email}"
+
+  condition {
+    title       = "update_production_pointer_only"
+    description = "Promotion can compare-and-swap only the production manifest pointer."
+    expression  = "resource.name == 'projects/_/buckets/${google_storage_bucket.models.name}/objects/production/model-manifest.json'"
+  }
 }
 
 resource "google_project_iam_member" "github_roles" {
@@ -71,9 +106,33 @@ resource "google_project_iam_member" "github_roles" {
   member  = "serviceAccount:${google_service_account.github_deployer.email}"
 }
 
-resource "google_project_iam_member" "github_plan_viewer" {
+resource "google_project_iam_member" "github_promoter_roles" {
+  for_each = toset([
+    "roles/run.developer",
+    "roles/serviceusage.serviceUsageConsumer",
+  ])
+
   project = var.project_id
-  role    = "roles/viewer"
+  role    = each.value
+  member  = "serviceAccount:${google_service_account.github_promoter.email}"
+}
+
+resource "google_project_iam_member" "github_plan_roles" {
+  for_each = toset([
+    "roles/artifactregistry.reader",
+    "roles/browser",
+    "roles/cloudscheduler.viewer",
+    "roles/iam.securityReviewer",
+    "roles/iam.serviceAccountViewer",
+    "roles/iam.workloadIdentityPoolViewer",
+    "roles/monitoring.viewer",
+    "roles/run.viewer",
+    "roles/serviceusage.serviceUsageViewer",
+    "roles/storage.viewer",
+  ])
+
+  project = var.project_id
+  role    = each.value
   member  = "serviceAccount:${google_service_account.github_plan.email}"
 }
 
@@ -83,10 +142,10 @@ resource "google_service_account_iam_member" "github_uses_runtime_identity" {
   member             = "serviceAccount:${google_service_account.github_deployer.email}"
 }
 
-resource "google_service_account_iam_member" "github_uses_trainer_identity" {
-  service_account_id = google_service_account.trainer.name
+resource "google_service_account_iam_member" "github_promoter_uses_runtime_identity" {
+  service_account_id = google_service_account.runtime.name
   role               = "roles/iam.serviceAccountUser"
-  member             = "serviceAccount:${google_service_account.github_deployer.email}"
+  member             = "serviceAccount:${google_service_account.github_promoter.email}"
 }
 
 resource "google_iam_workload_identity_pool" "github" {
@@ -118,15 +177,19 @@ resource "google_iam_workload_identity_pool_provider" "github" {
 }
 
 resource "google_service_account_iam_member" "github_deployer_wif" {
-  for_each = local.production_workflow_refs
-
   service_account_id = google_service_account.github_deployer.name
   role               = "roles/iam.workloadIdentityUser"
-  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.workflow/${each.value}"
+  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.workflow/${local.deploy_workflow_ref}"
+}
+
+resource "google_service_account_iam_member" "github_promoter_wif" {
+  service_account_id = google_service_account.github_promoter.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.workflow/${local.promote_workflow_ref}"
 }
 
 resource "google_service_account_iam_member" "github_plan_wif" {
   service_account_id = google_service_account.github_plan.name
   role               = "roles/iam.workloadIdentityUser"
-  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository/${local.repository_full_name}"
+  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.workflow/${local.plan_workflow_ref}"
 }

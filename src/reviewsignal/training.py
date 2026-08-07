@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib.metadata
+import math
 import sys
 import tempfile
 import time
@@ -104,6 +105,17 @@ def validate_promotion(
     dummy_macro_f1: float,
     production_macro_f1: float | None = None,
 ) -> None:
+    scores = {
+        "candidate": candidate_macro_f1,
+        "dummy": dummy_macro_f1,
+    }
+    if production_macro_f1 is not None:
+        scores["production"] = production_macro_f1
+    for name, score in scores.items():
+        if not math.isfinite(score):
+            raise PromotionGateError(f"{name} macro-F1 must be finite")
+        if not 0 <= score <= 1:
+            raise PromotionGateError(f"{name} macro-F1 must be between 0 and 1")
     if candidate_macro_f1 < 0.85:
         raise PromotionGateError("candidate macro-F1 is below the 0.85 minimum")
     if candidate_macro_f1 - dummy_macro_f1 < 0.15:
