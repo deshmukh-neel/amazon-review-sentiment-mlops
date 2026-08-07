@@ -1,0 +1,17 @@
+.git
+.github
+.venv
+.pytest_cache
+.ruff_cache
+.worktrees
+data
+artifacts
+models
+notebooks
+docs/assets
+infra
+qa
+*.ipynb
+*.png
+*.tfstate*
+

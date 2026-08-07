@@ -1,0 +1,43 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+.python-version.local
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Local data and model artifacts
+data/
+artifacts/
+models/
+*.joblib
+*.parquet
+*.jsonl
+*.jsonl.gz
+*.json.gz
+*.csv
+!tests/fixtures/*.jsonl
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Terraform
+infra/terraform/.terraform/
+infra/terraform/*.tfstate
+infra/terraform/*.tfstate.*
+infra/terraform/*.tfplan
+infra/terraform/.terraform.lock.hcl
+infra/terraform/backend.hcl
+infra/terraform/*.auto.tfvars
+!infra/terraform/example.auto.tfvars
+
+# Local worktrees and QA output
+.worktrees/
+qa/

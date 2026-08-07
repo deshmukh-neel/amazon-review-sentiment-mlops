@@ -1,0 +1,32 @@
+{"split":"train","label":1,"text":"Excellent battery life and a bright, clear screen."}
+{"split":"train","label":1,"text":"The controller feels sturdy and works without any lag."}
+{"split":"train","label":1,"text":"Setup was quick and the instructions were easy to follow."}
+{"split":"train","label":1,"text":"Great value, reliable performance, and thoughtful packaging."}
+{"split":"train","label":1,"text":"This headset sounds crisp and stays comfortable for hours."}
+{"split":"train","label":1,"text":"The game arrived early and was exactly as described."}
+{"split":"train","label":1,"text":"Responsive buttons make this an excellent replacement remote."}
+{"split":"train","label":1,"text":"I love the durable finish and compact design."}
+{"split":"train","label":1,"text":"Customer support solved my issue quickly and politely."}
+{"split":"train","label":1,"text":"A polished product that performs better than expected."}
+{"split":"train","label":1,"text":"The charger is fast, quiet, and pleasantly lightweight."}
+{"split":"train","label":1,"text":"Five stars for dependable quality and simple controls."}
+{"split":"train","label":0,"text":"The battery failed after one day and would not recharge."}
+{"split":"train","label":0,"text":"Buttons stick constantly and the controller disconnects."}
+{"split":"train","label":0,"text":"Setup was confusing because the instructions were incomplete."}
+{"split":"train","label":0,"text":"Poor value, unreliable performance, and damaged packaging."}
+{"split":"train","label":0,"text":"This headset crackles and becomes painful within minutes."}
+{"split":"train","label":0,"text":"The game arrived late and the disc was badly scratched."}
+{"split":"train","label":0,"text":"Unresponsive buttons make this replacement remote unusable."}
+{"split":"train","label":0,"text":"I dislike the flimsy finish and awkward oversized design."}
+{"split":"train","label":0,"text":"Customer support ignored my issue and closed the ticket."}
+{"split":"train","label":0,"text":"A disappointing product that performs worse than advertised."}
+{"split":"train","label":0,"text":"The charger is slow, noisy, and surprisingly heavy."}
+{"split":"train","label":0,"text":"One star for inconsistent quality and frustrating controls."}
+{"split":"test","label":1,"text":"Superb build quality and smooth performance from the start."}
+{"split":"test","label":1,"text":"A useful accessory that fits perfectly and feels premium."}
+{"split":"test","label":1,"text":"Fast delivery, clean packaging, and a flawless product."}
+{"split":"test","label":1,"text":"Simple to use and impressively reliable every day."}
+{"split":"test","label":0,"text":"Terrible build quality and sluggish performance from the start."}
+{"split":"test","label":0,"text":"A useless accessory that fits poorly and feels cheap."}
+{"split":"test","label":0,"text":"Late delivery, crushed packaging, and a defective product."}
+{"split":"test","label":0,"text":"Hard to use and painfully unreliable every day."}
