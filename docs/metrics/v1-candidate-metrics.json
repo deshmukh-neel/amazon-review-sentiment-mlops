@@ -1,0 +1,33 @@
+{
+  "model_version": "20260807T201536Z-9348d52",
+  "dataset_version": "mteb-amazon_polarity-326981253e1a-s42",
+  "git_sha": "9348d523dacb6fda52c42772070cc074de20c2f8",
+  "artifact_sha256": "15b9f85c779833a2fe06dfac3bdbb033f376dc9f1f9f07073a8ac3eb3961039b",
+  "artifact_size_bytes": 990318,
+  "trained_at": "2026-08-07T20:15:36.855247Z",
+  "metrics": {
+    "validation": {
+      "accuracy": 0.9155,
+      "macro_f1": 0.9154995529926353,
+      "precision": 0.917420132610006,
+      "recall": 0.9132,
+      "roc_auc": 0.9716246800000001,
+      "confusion_matrix": [[4589, 411], [434, 4566]],
+      "dummy_macro_f1": 0.3333333333333333,
+      "macro_f1_improvement": 0.582166219659302,
+      "inference_latency_ms": 0.26876668
+    },
+    "test": {
+      "accuracy": 0.9153,
+      "macro_f1": 0.915299897512876,
+      "precision": 0.9162156744838645,
+      "recall": 0.9142,
+      "roc_auc": 0.97289212,
+      "confusion_matrix": [[4582, 418], [429, 4571]],
+      "dummy_macro_f1": 0.3333333333333333,
+      "macro_f1_improvement": 0.5819665641795426,
+      "inference_latency_ms": 0.27044
+    }
+  },
+  "measurement_note": "Model-only single-record latency on local Apple Silicon; excludes network and cold-start time."
+}

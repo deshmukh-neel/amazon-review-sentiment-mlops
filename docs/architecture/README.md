@@ -19,13 +19,12 @@ flowchart LR
 
 ## Runtime boundaries
 
-- The training job can read and write data and candidate-model objects.
+- The training job can create objects only under versioned-data and candidate-model prefixes; it cannot overwrite, delete, or write production objects.
 - The public service can only read the exact production-model bucket.
-- GitHub Actions receives short-lived GCP credentials through Workload Identity Federation.
-- The service loads a model pinned by `MODEL_VERSION` and verifies its SHA-256 before deserialization.
+- GitHub Actions receives short-lived GCP credentials through workflow-specific Workload Identity Federation bindings. Code deploy, model promotion, and read-only Terraform plan use separate identities.
+- Each service revision loads an immutable manifest URI and verifies the model SHA-256 before deserialization.
 - Submitted review text exists only for the lifetime of one HTTP request and is excluded from logs.
 
 ## Cost controls
 
-The service uses zero minimum instances and two maximum instances. The training job runs monthly and exits. Storage and container-image lifecycle policies remove old non-production artifacts while retaining active production and rollback versions.
-
+The service uses zero minimum instances and two maximum instances. The training job runs monthly and exits. Storage lifecycle policies cover archived generations. Container cleanup deletes old images after 90 days while preserving at least the five newest versions.

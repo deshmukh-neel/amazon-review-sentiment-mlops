@@ -22,4 +22,4 @@ terraform validate
 terraform plan -out=reviewsignal.tfplan
 ```
 
-`container_image` must use an immutable Git SHA tag. The service reads `production/model-manifest.json`; the monthly job writes versioned data and candidates but cannot promote them. A separate manual workflow evaluates, smoke-tests with zero traffic, migrates traffic, and preserves the prior revision for rollback.
+`container_image` must use an immutable Git SHA tag. Terraform bootstraps the service with `production/model-manifest.json`, then ignores workflow-managed service templates and traffic on later applies. Promotion and code deployments pin each new revision to `production/versions/<model-version>/model-manifest.json`. The monthly job has create-only access to versioned data and candidates and cannot modify production. A separate promoter identity validates provenance and metrics in isolation, creates immutable production objects, smoke-tests with zero traffic, migrates traffic, and updates only the production pointer with a generation precondition.
