@@ -164,10 +164,11 @@ resource "google_iam_workload_identity_pool_provider" "github" {
   disabled                           = false
 
   attribute_mapping = {
-    "google.subject"       = "assertion.sub"
-    "attribute.repository" = "assertion.repository"
-    "attribute.ref"        = "assertion.ref"
-    "attribute.workflow"   = "assertion.workflow_ref"
+    "google.subject"          = "assertion.sub"
+    "attribute.repository"    = "assertion.repository"
+    "attribute.ref"           = "assertion.ref"
+    "attribute.workflow"      = "assertion.workflow_ref"
+    "attribute.workflow_path" = "assertion.workflow_ref.split('@')[0]"
   }
   attribute_condition = "assertion.repository == '${local.repository_full_name}'"
 
@@ -191,5 +192,5 @@ resource "google_service_account_iam_member" "github_promoter_wif" {
 resource "google_service_account_iam_member" "github_plan_wif" {
   service_account_id = google_service_account.github_plan.name
   role               = "roles/iam.workloadIdentityUser"
-  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.workflow/${local.plan_workflow_ref}"
+  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.workflow_path/${local.plan_workflow_path}"
 }

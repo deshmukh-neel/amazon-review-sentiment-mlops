@@ -28,7 +28,7 @@ locals {
   repository_full_name = "${var.github_owner}/${var.github_repository}"
   deploy_workflow_ref  = "${local.repository_full_name}/.github/workflows/deploy.yml@refs/heads/main"
   promote_workflow_ref = "${local.repository_full_name}/.github/workflows/promote-model.yml@refs/heads/main"
-  plan_workflow_ref    = "${local.repository_full_name}/.github/workflows/terraform-plan.yml@refs/heads/main"
+  plan_workflow_path   = "${local.repository_full_name}/.github/workflows/terraform-plan.yml"
 }
 
 resource "google_project_service" "required" {

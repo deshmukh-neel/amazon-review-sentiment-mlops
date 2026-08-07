@@ -108,6 +108,7 @@ jobs:
         id: gate
         env:
           INITIAL_PROMOTION: ${{ inputs.initial_promotion }}
+          MODEL_VERSION: ${{ steps.candidate.outputs.model_version }}
           PRODUCTION_POINTER: ${{ vars.PRODUCTION_MODEL_MANIFEST_URI }}
         run: |
           PRODUCTION_ROOT="${PRODUCTION_POINTER%/model-manifest.json}"
@@ -125,12 +126,18 @@ jobs:
               echo "Production pointer unavailable; refusing to bypass the regression gate." >&2
               exit 1
             fi
-            EXISTING_VERSION="$(gcloud storage objects list "${MODEL_BUCKET_ROOT}" \
-              --filter='name~^production/versions/' --limit=1 --format='value(name)')"
-            if [ -n "${EXISTING_VERSION}" ]; then
-              echo "Production versions already exist; initial promotion is not allowed." >&2
-              exit 1
-            fi
+            while IFS= read -r EXISTING_OBJECT; do
+              [ -z "${EXISTING_OBJECT}" ] && continue
+              case "${EXISTING_OBJECT}" in
+                "production/versions/${MODEL_VERSION}/model.joblib" | \
+                  "production/versions/${MODEL_VERSION}/model-manifest.json") ;;
+                *)
+                  echo "Another production version already exists; initial promotion is not allowed." >&2
+                  exit 1
+                  ;;
+              esac
+            done < <(gcloud storage objects list "${MODEL_BUCKET_ROOT}" \
+              --filter='name~^production/versions/' --format='value(name)')
           fi
 
           VERIFY_ARGS=(reviewsignal evaluate \
@@ -184,14 +191,38 @@ jobs:
 
           PRODUCTION_ROOT="${PRODUCTION_POINTER%/model-manifest.json}"
           VERSION_PREFIX="${PRODUCTION_ROOT}/versions/${MODEL_VERSION}"
+          IMMUTABLE_ARTIFACT_URI="${VERSION_PREFIX}/model.joblib"
           IMMUTABLE_MANIFEST_URI="${VERSION_PREFIX}/model-manifest.json"
-          gcloud storage cp "${ARTIFACT_URI}#${ARTIFACT_GENERATION}" \
-            "${VERSION_PREFIX}/model.joblib" --if-generation-match=0
-          jq --arg uri "${VERSION_PREFIX}/model.joblib" '.artifact_uri = $uri' \
+          EXPECTED_ARTIFACT_SHA="$(jq -er '.artifact_sha256' \
+            /tmp/reviewsignal-candidate/model-manifest.json)"
+          if IMMUTABLE_ARTIFACT_GENERATION="$(gcloud storage objects describe \
+            "${IMMUTABLE_ARTIFACT_URI}" --format='value(generation)' 2>/dev/null)"; then
+            gcloud storage cp \
+              "${IMMUTABLE_ARTIFACT_URI}#${IMMUTABLE_ARTIFACT_GENERATION}" \
+              /tmp/reviewsignal-candidate/existing-production-model.joblib
+            printf '%s  %s\n' "${EXPECTED_ARTIFACT_SHA}" \
+              /tmp/reviewsignal-candidate/existing-production-model.joblib \
+              | sha256sum --check --status
+          else
+            gcloud storage cp "${ARTIFACT_URI}#${ARTIFACT_GENERATION}" \
+              "${IMMUTABLE_ARTIFACT_URI}" --if-generation-match=0
+          fi
+          jq --arg uri "${IMMUTABLE_ARTIFACT_URI}" '.artifact_uri = $uri' \
             /tmp/reviewsignal-candidate/model-manifest.json \
             > /tmp/reviewsignal-candidate/production-manifest.json
-          gcloud storage cp /tmp/reviewsignal-candidate/production-manifest.json \
-            "${IMMUTABLE_MANIFEST_URI}" --if-generation-match=0
+          if IMMUTABLE_MANIFEST_GENERATION="$(gcloud storage objects describe \
+            "${IMMUTABLE_MANIFEST_URI}" --format='value(generation)' 2>/dev/null)"; then
+            gcloud storage cp \
+              "${IMMUTABLE_MANIFEST_URI}#${IMMUTABLE_MANIFEST_GENERATION}" \
+              /tmp/reviewsignal-candidate/existing-production-manifest.json
+            diff --brief \
+              <(jq --sort-keys . /tmp/reviewsignal-candidate/production-manifest.json) \
+              <(jq --sort-keys . \
+                /tmp/reviewsignal-candidate/existing-production-manifest.json)
+          else
+            gcloud storage cp /tmp/reviewsignal-candidate/production-manifest.json \
+              "${IMMUTABLE_MANIFEST_URI}" --if-generation-match=0
+          fi
 
           gcloud run deploy "${SERVICE}" \
             --project "${PROJECT}" --region "${REGION}" \
