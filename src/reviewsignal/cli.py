@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Annotated
 
@@ -16,6 +17,7 @@ from reviewsignal.ingestion import (
     resolve_hugging_face_source,
 )
 from reviewsignal.manifests import ModelManifest, read_manifest
+from reviewsignal.storage import download_uri
 from reviewsignal.training import load_verified_artifact, train_candidate, validate_promotion
 
 app = typer.Typer(no_args_is_help=True, help="Reproducible Amazon review sentiment pipeline.")
@@ -97,8 +99,12 @@ def evaluate(
 ) -> None:
     """Verify an artifact and evaluate its explicit promotion gate."""
     manifest = read_manifest(model_manifest, ModelManifest)
-    artifact_path = Path(manifest.artifact_uri)
-    load_verified_artifact(artifact_path, manifest.artifact_sha256)
+    with tempfile.TemporaryDirectory(prefix="reviewsignal-evaluate-") as temp_dir:
+        artifact_path = download_uri(
+            manifest.artifact_uri,
+            Path(temp_dir) / "model.joblib",
+        )
+        load_verified_artifact(artifact_path, manifest.artifact_sha256)
     validation = manifest.metrics["validation"]
     validate_promotion(
         validation["macro_f1"],
